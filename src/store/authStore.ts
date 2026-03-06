@@ -15,17 +15,17 @@ interface AuthStore {
   setUser: (user: User) => void;
 }
 
-export const useAuthStore = create<AuthStore>((set) => ({
+export const useAuthStore = create<AuthStore>((set: any) => ({
   user: null,
   isAuthenticated: false,
   isLoading: true,
 
-  login: async (email, password) => {
+  login: async (email: string, password: string) => {
     const result = await authService.login({ email, password });
     set({ user: result.user, isAuthenticated: true });
   },
 
-  register: async (payload) => {
+  register: async (payload: authService.RegisterPayload) => {
     const result = await authService.register(payload);
     set({ user: result.user, isAuthenticated: true });
   },
@@ -49,5 +49,5 @@ export const useAuthStore = create<AuthStore>((set) => ({
     }
   },
 
-  setUser: (user) => set({ user }),
+  setUser: (user: User) => set({ user }),
 }));
