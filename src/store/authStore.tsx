@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
 import type { User } from '../types';
 import * as authService from '../services/authService';
 
@@ -13,44 +13,54 @@ interface AuthStore {
   setUser: (user: User) => void;
 }
 
-const AuthContext = createContext<AuthStore>({} as AuthStore);
+// ✅ Default утгуудыг зөв boolean-оор тодорхойлсон
+const AuthContext = createContext<AuthStore>({
+  user: null,
+  isAuthenticated: false,
+  isLoading: true,
+  login: async () => {},
+  register: async () => {},
+  logout: async () => {},
+  loadStoredAuth: async () => {},
+  setUser: () => {},
+});
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUserState] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string): Promise<void> => {
     const result = await authService.login({ email, password });
-    setUserState(result.user);
+    setUser(result.user);
     setIsAuthenticated(true);
   };
 
-  const register = async (payload: authService.RegisterPayload) => {
+  const register = async (payload: authService.RegisterPayload): Promise<void> => {
     const result = await authService.register(payload);
-    setUserState(result.user);
+    setUser(result.user);
     setIsAuthenticated(true);
   };
 
-  const logout = async () => {
+  const logout = async (): Promise<void> => {
     await authService.logout();
-    setUserState(null);
+    setUser(null);
     setIsAuthenticated(false);
   };
 
-  const loadStoredAuth = async () => {
+  const loadStoredAuth = async (): Promise<void> => {
     try {
-      const [storedUser, token] = await Promise.all([
-        authService.getStoredUser(),
-        authService.getStoredToken(),
-      ]);
-      if (storedUser && token) {
-        setUserState(storedUser);
+      const storedUser = await authService.getStoredUser();
+      const token = await authService.getStoredToken();
+      if (storedUser !== null && token !== null) {
+        setUser(storedUser);
         setIsAuthenticated(true);
       } else {
+        setUser(null);
         setIsAuthenticated(false);
       }
     } catch {
+      setUser(null);
       setIsAuthenticated(false);
     } finally {
       setIsLoading(false);
@@ -58,11 +68,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{
-      user, isAuthenticated, isLoading,
-      login, register, logout, loadStoredAuth,
-      setUser: setUserState,
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isAuthenticated,
+        isLoading,
+        login,
+        register,
+        logout,
+        loadStoredAuth,
+        setUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
