@@ -20,9 +20,53 @@ interface FormData {
   confirmPassword: string;
 }
 
+// ✅ Field компонентыг RegisterScreen-с ГАДНА тодорхойлсон
+interface FieldProps {
+  label: string;
+  field: keyof FormData;
+  placeholder: string;
+  keyboardType?: any;
+  autoCapitalize?: any;
+  secure?: boolean;
+  value: string;
+  error?: string;
+  showPass?: boolean;
+  onTogglePass?: () => void;
+  onChangeText: (val: string) => void;
+}
+
+const Field = ({
+  label, placeholder, keyboardType = 'default',
+  autoCapitalize = 'words', secure = false,
+  value, error, showPass, onTogglePass, onChangeText,
+}: FieldProps) => (
+  <View style={styles.fieldGroup}>
+    <Text style={styles.label}>{label}</Text>
+    <View style={[styles.inputWrap, error ? styles.inputError : null]}>
+      <TextInput
+        style={styles.input}
+        placeholder={placeholder}
+        placeholderTextColor={COLORS.textLight}
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
+        autoCorrect={false}
+        secureTextEntry={secure && !showPass}
+      />
+      {secure && (
+        <TouchableOpacity onPress={onTogglePass} style={styles.eyeBtn}>
+          <Ionicons name={showPass ? 'eye-outline' : 'eye-off-outline'} size={18} color={COLORS.textMuted} />
+        </TouchableOpacity>
+      )}
+    </View>
+    {error && <Text style={styles.errorText}>{error}</Text>}
+  </View>
+);
+
 export const RegisterScreen = ({ navigation }: Props) => {
   const { register } = useAuthStore();
-  const [form, setForm]     = useState<FormData>({
+  const [form, setForm] = useState<FormData>({
     firstName: '', lastName: '', email: '',
     phoneNumber: '', password: '', confirmPassword: '',
   });
@@ -68,37 +112,6 @@ export const RegisterScreen = ({ navigation }: Props) => {
     }
   };
 
-  const Field = ({
-    label, field, placeholder, keyboardType = 'default',
-    autoCapitalize = 'words', secure = false,
-  }: {
-    label: string; field: keyof FormData; placeholder: string;
-    keyboardType?: any; autoCapitalize?: any; secure?: boolean;
-  }) => (
-    <View style={styles.fieldGroup}>
-      <Text style={styles.label}>{label}</Text>
-      <View style={[styles.inputWrap, errors[field] ? styles.inputError : null]}>
-        <TextInput
-          style={styles.input}
-          placeholder={placeholder}
-          placeholderTextColor={COLORS.textLight}
-          value={form[field]}
-          onChangeText={(t) => update(field, t)}
-          keyboardType={keyboardType}
-          autoCapitalize={autoCapitalize}
-          autoCorrect={false}
-          secureTextEntry={secure && !showPass}
-        />
-        {secure && (
-          <TouchableOpacity onPress={() => setShowPass(!showPass)} style={styles.eyeBtn}>
-            <Ionicons name={showPass ? 'eye-outline' : 'eye-off-outline'} size={18} color={COLORS.textMuted} />
-          </TouchableOpacity>
-        )}
-      </View>
-      {errors[field] && <Text style={styles.errorText}>{errors[field]}</Text>}
-    </View>
-  );
-
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
@@ -116,24 +129,50 @@ export const RegisterScreen = ({ navigation }: Props) => {
         <View style={styles.form}>
           <View style={styles.row}>
             <View style={{ flex: 1 }}>
-              <Field label="Нэр" field="firstName" placeholder="Бат" />
+              <Field
+                label="Нэр" field="firstName" placeholder="Бат"
+                value={form.firstName} error={errors.firstName}
+                onChangeText={(t) => update('firstName', t)}
+              />
             </View>
             <View style={{ flex: 1 }}>
-              <Field label="Овог" field="lastName" placeholder="Эрдэнэ" />
+              <Field
+                label="Овог" field="lastName" placeholder="Эрдэнэ"
+                value={form.lastName} error={errors.lastName}
+                onChangeText={(t) => update('lastName', t)}
+              />
             </View>
           </View>
 
-          <Field label="Имэйл хаяг" field="email" placeholder="bat@example.com"
-            keyboardType="email-address" autoCapitalize="none" />
+          <Field
+            label="Имэйл хаяг" field="email" placeholder="bat@example.com"
+            keyboardType="email-address" autoCapitalize="none"
+            value={form.email} error={errors.email}
+            onChangeText={(t) => update('email', t)}
+          />
 
-          <Field label="Утасны дугаар" field="phoneNumber" placeholder="+97699001122"
-            keyboardType="phone-pad" autoCapitalize="none" />
+          <Field
+            label="Утасны дугаар" field="phoneNumber" placeholder="+97699001122"
+            keyboardType="phone-pad" autoCapitalize="none"
+            value={form.phoneNumber} error={errors.phoneNumber}
+            onChangeText={(t) => update('phoneNumber', t)}
+          />
 
-          <Field label="Нууц үг" field="password" placeholder="Дор хаяж 8 тэмдэгт"
-            autoCapitalize="none" secure />
+          <Field
+            label="Нууц үг" field="password" placeholder="Дор хаяж 8 тэмдэгт"
+            autoCapitalize="none" secure
+            value={form.password} error={errors.password}
+            showPass={showPass} onTogglePass={() => setShowPass(!showPass)}
+            onChangeText={(t) => update('password', t)}
+          />
 
-          <Field label="Нууц үг давтах" field="confirmPassword" placeholder="Нууц үгийг давтана уу"
-            autoCapitalize="none" secure />
+          <Field
+            label="Нууц үг давтах" field="confirmPassword" placeholder="Нууц үгийг давтана уу"
+            autoCapitalize="none" secure
+            value={form.confirmPassword} error={errors.confirmPassword}
+            showPass={showPass} onTogglePass={() => setShowPass(!showPass)}
+            onChangeText={(t) => update('confirmPassword', t)}
+          />
 
           <TouchableOpacity
             style={[styles.btn, loading && styles.btnDisabled]}
@@ -158,34 +197,32 @@ export const RegisterScreen = ({ navigation }: Props) => {
 };
 
 const styles = StyleSheet.create({
-  flex:       { flex: 1, backgroundColor: COLORS.background },
-  container:  { flexGrow: 1, paddingHorizontal: SPACING.lg, paddingBottom: SPACING.xxl },
-  header:     { paddingTop: 56, paddingBottom: SPACING.xl },
-  backBtn:    {
+  flex:        { flex: 1, backgroundColor: COLORS.background },
+  container:   { flexGrow: 1, paddingHorizontal: SPACING.lg, paddingBottom: SPACING.xxl },
+  header:      { paddingTop: 56, paddingBottom: SPACING.xl },
+  backBtn:     {
     width: 40, height: 40, borderRadius: RADIUS.md,
     backgroundColor: COLORS.surface, justifyContent: 'center',
     alignItems: 'center', marginBottom: SPACING.md,
     borderWidth: 1, borderColor: COLORS.border,
   },
-  title:      { fontSize: FONT_SIZE.xxxl, fontWeight: '700', color: COLORS.text, marginBottom: 6 },
-  subtitle:   { fontSize: FONT_SIZE.md, color: COLORS.textMuted },
-
-  form:       { gap: SPACING.md },
-  row:        { flexDirection: 'row', gap: SPACING.sm },
-  fieldGroup: { gap: 6 },
-  label:      { fontSize: FONT_SIZE.sm, fontWeight: '600', color: COLORS.text },
-  inputWrap:  {
+  title:       { fontSize: FONT_SIZE.xxxl, fontWeight: '700', color: COLORS.text, marginBottom: 6 },
+  subtitle:    { fontSize: FONT_SIZE.md, color: COLORS.textMuted },
+  form:        { gap: SPACING.md },
+  row:         { flexDirection: 'row', gap: SPACING.sm },
+  fieldGroup:  { gap: 6 },
+  label:       { fontSize: FONT_SIZE.sm, fontWeight: '600', color: COLORS.text },
+  inputWrap:   {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: COLORS.surface, borderRadius: RADIUS.md,
     borderWidth: 1.5, borderColor: COLORS.border,
     paddingHorizontal: SPACING.md, height: 52,
   },
-  inputError: { borderColor: COLORS.danger },
-  input:      { flex: 1, fontSize: FONT_SIZE.md, color: COLORS.text },
-  eyeBtn:     { padding: 4 },
-  errorText:  { fontSize: FONT_SIZE.xs, color: COLORS.danger, marginTop: 2 },
-
-  btn:        {
+  inputError:  { borderColor: COLORS.danger },
+  input:       { flex: 1, fontSize: FONT_SIZE.md, color: COLORS.text },
+  eyeBtn:      { padding: 4 },
+  errorText:   { fontSize: FONT_SIZE.xs, color: COLORS.danger, marginTop: 2 },
+  btn:         {
     backgroundColor: COLORS.primary, borderRadius: RADIUS.md,
     height: 52, justifyContent: 'center', alignItems: 'center',
     marginTop: SPACING.sm,
@@ -193,7 +230,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
   },
   btnDisabled: { opacity: 0.7 },
-  btnText:    { color: COLORS.white, fontSize: FONT_SIZE.md, fontWeight: '700' },
-  loginLink:  { alignItems: 'center', paddingVertical: SPACING.sm },
+  btnText:     { color: COLORS.white, fontSize: FONT_SIZE.md, fontWeight: '700' },
+  loginLink:   { alignItems: 'center', paddingVertical: SPACING.sm },
   loginLinkText: { fontSize: FONT_SIZE.sm, color: COLORS.textMuted },
 });
