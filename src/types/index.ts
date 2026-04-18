@@ -62,32 +62,69 @@ export interface Vehicle {
 
 // ── Claim ─────────────────────────────────────────────────────
 export type ClaimStatus =
-  | 'draft' | 'submitted' | 'under_review' | 'ai_processing'
-  | 'pending_inspection' | 'approved' | 'partially_approved'
-  | 'rejected' | 'closed';
+  | 'draft'
+  | 'submitted'
+  | 'under_review'
+  | 'ai_processing'
+  | 'pending_inspection'
+  | 'approved'
+  | 'partially_approved'
+  | 'rejected'
+  | 'closed';
 
 export type AccidentType =
-  | 'collision' | 'rear_end' | 'side_impact' | 'rollover'
-  | 'hit_and_run' | 'weather' | 'vandalism' | 'theft' | 'fire'
-  | 'flood' | 'other';
+  | 'collision'
+  | 'rear_end'
+  | 'side_impact'
+  | 'rollover'
+  | 'hit_and_run'
+  | 'weather'
+  | 'vandalism'
+  | 'theft'
+  | 'fire'
+  | 'flood'
+  | 'other';
+
+export type AccidentSeverity = 'minor' | 'moderate' | 'severe' | 'total_loss';
 
 export interface Claim {
   id: string;
   claimNumber: string;
   status: ClaimStatus;
+
+  // ── Accident details ───────────────────────────────────────
   accidentDate: string;
   accidentLocation: string;
+  accidentType: AccidentType;
+  severity?: AccidentSeverity;
+  description: string;
   latitude?: number;
   longitude?: number;
-  accidentType: AccidentType;
-  severity?: 'minor' | 'moderate' | 'severe' | 'total_loss';
-  description: string;
+
+  // ── Third party ────────────────────────────────────────────
   thirdPartyInvolved: boolean;
+  thirdPartyName?: string;
+  thirdPartyLicensePlate?: string;
+  thirdPartyInsurance?: string;
+  thirdPartyPolicyNumber?: string;
+
+  // ── Police report ──────────────────────────────────────────
   policeReportFiled: boolean;
+  policeReportNumber?: string;
+
+  // ── Financial ──────────────────────────────────────────────
   estimatedRepairCost?: number;
+  approvedAmount?: number;
+  deductibleAmount?: number;
+
+  // ── Relations ──────────────────────────────────────────────
   vehicleId: string;
   vehicle?: Vehicle;
+  submittedById?: string;
+
+  // ── Timestamps ─────────────────────────────────────────────
   createdAt: string;
+  updatedAt?: string;
 }
 
 // ── Navigation ────────────────────────────────────────────────
