@@ -2,7 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { DashboardScreen } from '../screens/dashboard/DashboardScreen';
-import { ClaimsScreen } from '../screens/claims/ClaimsScreen';
+import { ClaimsNavigator } from './ClaimsNavigator';   // ← Stack navigator
 import { VehiclesScreen } from '../screens/vehicles/VehiclesScreen';
 import { ProfileScreen } from '../screens/dashboard/ProfileScreen';
 import type { MainTabParamList } from '../types';
@@ -27,17 +27,28 @@ export const MainNavigator = () => (
       tabBarIcon: ({ color, size }: any) => {
         const icons: Record<string, string> = {
           Dashboard: 'home-outline',
-          Claims: 'document-text-outline',
-          Vehicles: 'car-outline',
-          Profile: 'person-outline',
+          Claims:    'document-text-outline',
+          Vehicles:  'car-outline',
+          Profile:   'person-outline',
         };
-        return <Ionicons name={icons[route.name] as any} size={size} color={color} />;
+        return (
+          <Ionicons
+            name={icons[route.name] as any}
+            size={size}
+            color={color}
+          />
+        );
       },
     })}
   >
     <Tab.Screen name="Dashboard" component={DashboardScreen} />
-    <Tab.Screen name="Claims" component={ClaimsScreen} />
+    {/* Claims tab нь Stack navigator ашигладаг */}
+    <Tab.Screen
+      name="Claims"
+      component={ClaimsNavigator}
+      options={{ title: 'Мэдэгдлүүд' }}
+    />
     <Tab.Screen name="Vehicles" component={VehiclesScreen} />
-    <Tab.Screen name="Profile" component={ProfileScreen} />
+    <Tab.Screen name="Profile"  component={ProfileScreen} />
   </Tab.Navigator>
 );
