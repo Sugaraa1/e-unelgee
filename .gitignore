@@ -40,5 +40,5 @@ yarn-error.*
 /ios
 /android
 
-uploads/*
-!uploads/.gitkeep
+accident-assessment-backend/uploads/*
+!accident-assessment-backend/uploads/.gitkeep
