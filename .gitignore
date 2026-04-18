@@ -42,3 +42,5 @@ yarn-error.*
 
 uploads/*
 !uploads/.gitkeep
+
+accident-assessment-backend/uploads
