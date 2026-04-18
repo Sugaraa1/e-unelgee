@@ -29,6 +29,7 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
 
   # ── PostgreSQL ───────────────────────────────────────────────────────────────
   postgres:

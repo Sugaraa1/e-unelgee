@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,12 +9,18 @@ import {
   SafeAreaView,
   TouchableOpacity,
   Platform,
+  Image,
+  FlatList,
+  Modal,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, STATUS_COLORS } from '../../constants';
 import { getClaimById } from '../../services/claimsService';
+import { uploadClaimImage, getClaimImages, UploadedImage } from '../../services/imagesService';
 import type { Claim, ClaimsStackParamList } from '../../types';
 
 type Props = {
@@ -22,50 +28,51 @@ type Props = {
   route: RouteProp<ClaimsStackParamList, 'ClaimDetail'>;
 };
 
+const { width: SCREEN_W } = Dimensions.get('window');
+const IMAGE_SIZE = (SCREEN_W - SPACING.lg * 2 - SPACING.sm * 2) / 3;
+
 // ── Labels ────────────────────────────────────────────────────
 const STATUS_LABELS: Record<string, string> = {
-  draft:              'Ноорог',
-  submitted:          'Илгээсэн',
-  under_review:       'Хянагдаж байна',
-  ai_processing:      'AI боловсруулж байна',
+  draft: 'Ноорог',
+  submitted: 'Илгээсэн',
+  under_review: 'Хянагдаж байна',
+  ai_processing: 'AI боловсруулж байна',
   pending_inspection: 'Шалгалт хүлээж байна',
-  approved:           'Зөвшөөрсөн',
+  approved: 'Зөвшөөрсөн',
   partially_approved: 'Хэсэгчлэн зөвшөөрсөн',
-  rejected:           'Татгалзсан',
-  closed:             'Хаагдсан',
+  rejected: 'Татгалзсан',
+  closed: 'Хаагдсан',
 };
 
 const TYPE_LABELS: Record<string, string> = {
-  collision:    'Мөргөлдөөн',
-  rear_end:     'Ар талаас',
-  side_impact:  'Хажуугийн цохилт',
-  rollover:     'Эргэлт',
-  hit_and_run:  'Зугтсан',
-  weather:      'Цаг агаар',
-  vandalism:    'Эвдрэл/Хулгай',
-  theft:        'Хулгай',
-  fire:         'Түймэр',
-  flood:        'Үер',
-  other:        'Бусад',
+  collision: 'Мөргөлдөөн',
+  rear_end: 'Ар талаас',
+  side_impact: 'Хажуугийн цохилт',
+  rollover: 'Эргэлт',
+  hit_and_run: 'Зугтсан',
+  weather: 'Цаг агаар',
+  vandalism: 'Эвдрэл/Хулгай',
+  theft: 'Хулгай',
+  fire: 'Түймэр',
+  flood: 'Үер',
+  other: 'Бусад',
 };
 
 const SEVERITY_LABELS: Record<string, string> = {
-  minor:      'Бага',
-  moderate:   'Дунд',
-  severe:     'Хүнд',
+  minor: 'Бага',
+  moderate: 'Дунд',
+  severe: 'Хүнд',
   total_loss: 'Бүрэн гэмтэл',
 };
 
 const SEVERITY_COLORS: Record<string, string> = {
-  minor:      COLORS.secondary,
-  moderate:   COLORS.warning,
-  severe:     COLORS.danger,
+  minor: COLORS.secondary,
+  moderate: COLORS.warning,
+  severe: COLORS.danger,
   total_loss: '#7C3AED',
 };
 
-// ── Reusable sub-components ───────────────────────────────────
-
-/** Хэсгийн гарчиг */
+// ── Sub-components ────────────────────────────────────────────
 const SectionTitle = ({ icon, title }: { icon: string; title: string }) => (
   <View style={styles.sectionHeader}>
     <Ionicons name={icon as any} size={16} color={COLORS.primary} />
@@ -73,30 +80,18 @@ const SectionTitle = ({ icon, title }: { icon: string; title: string }) => (
   </View>
 );
 
-/** Мэдээллийн мөр */
-const InfoRow = ({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) => (
+const InfoRow = ({ label, value, mono }: { label: string; value: string; mono?: boolean }) => (
   <View style={styles.infoRow}>
     <Text style={styles.infoLabel}>{label}</Text>
     <Text style={[styles.infoValue, mono && styles.monoValue]}>{value}</Text>
   </View>
 );
 
-/** Status badge */
 const StatusBadge = ({ status }: { status: string }) => {
   const colors = STATUS_COLORS[status] ?? { bg: '#F3F4F6', text: '#374151' };
   return (
     <View style={[styles.badge, { backgroundColor: colors.bg }]}>
-      <View
-        style={[styles.badgeDot, { backgroundColor: colors.text }]}
-      />
+      <View style={[styles.badgeDot, { backgroundColor: colors.text }]} />
       <Text style={[styles.badgeText, { color: colors.text }]}>
         {STATUS_LABELS[status] ?? status}
       </Text>
@@ -104,27 +99,161 @@ const StatusBadge = ({ status }: { status: string }) => {
   );
 };
 
+// ── Image Preview Modal ───────────────────────────────────────
+const ImagePreviewModal = ({
+  uri,
+  visible,
+  onClose,
+}: {
+  uri: string | null;
+  visible: boolean;
+  onClose: () => void;
+}) => (
+  <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <View style={styles.previewOverlay}>
+      <TouchableOpacity style={styles.previewClose} onPress={onClose} activeOpacity={0.8}>
+        <Ionicons name="close-circle" size={36} color={COLORS.white} />
+      </TouchableOpacity>
+      {uri && (
+        <Image
+          source={{ uri }}
+          style={styles.previewImage}
+          resizeMode="contain"
+        />
+      )}
+    </View>
+  </Modal>
+);
+
 // ── Main Screen ───────────────────────────────────────────────
 export const ClaimDetailScreen = ({ navigation, route }: Props) => {
   const { claimId } = route.params;
-  const [claim, setClaim]   = useState<Claim | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await getClaimById(claimId);
-        setClaim(data);
-      } catch {
-        Alert.alert('Алдаа', 'Мэдэгдлийн мэдээлэл ачааллахад алдаа гарлаа', [
-          { text: 'Буцах', onPress: () => navigation.goBack() },
-        ]);
-      } finally {
-        setLoading(false);
-      }
-    })();
+  const [claim, setClaim] = useState<Claim | null>(null);
+  const [images, setImages] = useState<UploadedImage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+
+  // Preview modal
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [previewVisible, setPreviewVisible] = useState(false);
+
+  // ── Data fetching ─────────────────────────────────────────────
+  const fetchData = useCallback(async () => {
+    try {
+      const [claimData, imagesData] = await Promise.allSettled([
+        getClaimById(claimId),
+        getClaimImages(claimId),
+      ]);
+
+      if (claimData.status === 'fulfilled') setClaim(claimData.value);
+      if (imagesData.status === 'fulfilled') setImages(imagesData.value);
+    } catch {
+      Alert.alert('Алдаа', 'Мэдэгдлийн мэдээлэл ачааллахад алдаа гарлаа', [
+        { text: 'Буцах', onPress: () => navigation.goBack() },
+      ]);
+    } finally {
+      setLoading(false);
+    }
   }, [claimId]);
 
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  // ── Permission helper ─────────────────────────────────────────
+  const requestCameraPermission = async (): Promise<boolean> => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        'Зөвшөөрөл шаардлагатай',
+        'Камер ашиглахын тулд зөвшөөрөл өгнө үү. Тохиргоо руу очно уу.',
+        [{ text: 'OK' }],
+      );
+      return false;
+    }
+    return true;
+  };
+
+  const requestMediaPermission = async (): Promise<boolean> => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        'Зөвшөөрөл шаардлагатай',
+        'Галерей ашиглахын тулд зөвшөөрөл өгнө үү.',
+        [{ text: 'OK' }],
+      );
+      return false;
+    }
+    return true;
+  };
+
+  // ── Upload logic ──────────────────────────────────────────────
+  const handleUpload = async (uri: string) => {
+    if (!claim) return;
+    setUploading(true);
+    try {
+      // Файлын нэрийг timestamp-аар үүсгэнэ
+      const fileName = `claim_${claim.claimNumber}_${Date.now()}.jpg`;
+      const uploaded = await uploadClaimImage(claimId, uri, fileName);
+      setImages((prev) => [uploaded, ...prev]);
+      Alert.alert('Амжилттай', 'Зураг амжилттай upload хийгдлээ ✅');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message ?? 'Зураг upload хийхэд алдаа гарлаа';
+      Alert.alert('Upload алдаа', Array.isArray(msg) ? msg.join('\n') : msg);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ── Camera ────────────────────────────────────────────────────
+  const handleTakePhoto = async () => {
+    const hasPermission = await requestCameraPermission();
+    if (!hasPermission) return;
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.7,           // compression
+      aspect: [4, 3],
+      exif: false,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      await handleUpload(result.assets[0].uri);
+    }
+  };
+
+  // ── Gallery ───────────────────────────────────────────────────
+  const handlePickFromGallery = async () => {
+    const hasPermission = await requestMediaPermission();
+    if (!hasPermission) return;
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.7,
+      aspect: [4, 3],
+      exif: false,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      await handleUpload(result.assets[0].uri);
+    }
+  };
+
+  // ── Photo action sheet ────────────────────────────────────────
+  const handleAddPhoto = () => {
+    Alert.alert(
+      'Зураг нэмэх',
+      'Зургийг хаанаас нэмэх вэ?',
+      [
+        { text: 'Камераар авах 📷', onPress: handleTakePhoto },
+        { text: 'Галлерейгаас сонгох 🖼️', onPress: handlePickFromGallery },
+        { text: 'Болих', style: 'cancel' },
+      ],
+    );
+  };
+
+  // ── Loading ───────────────────────────────────────────────────
   if (loading) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -147,14 +276,12 @@ export const ClaimDetailScreen = ({ navigation, route }: Props) => {
     hour: '2-digit', minute: '2-digit',
   });
 
+  // ── Render ────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.safe}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backBtn}
-        >
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={COLORS.text} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
@@ -169,7 +296,7 @@ export const ClaimDetailScreen = ({ navigation, route }: Props) => {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Hero Card: status + claim number ─────────────── */}
+        {/* ── Hero Card ────────────────────────────────────── */}
         <View style={styles.heroCard}>
           <View style={styles.heroTop}>
             <View style={styles.heroIcon}>
@@ -180,17 +307,13 @@ export const ClaimDetailScreen = ({ navigation, route }: Props) => {
               <Text style={styles.heroDate}>Үүссэн: {createdDate}</Text>
             </View>
           </View>
-
           <View style={styles.heroBottom}>
             <StatusBadge status={claim.status} />
             {claim.severity && (
               <View
                 style={[
                   styles.severityBadge,
-                  {
-                    backgroundColor:
-                      (SEVERITY_COLORS[claim.severity] ?? COLORS.warning) + '18',
-                  },
+                  { backgroundColor: (SEVERITY_COLORS[claim.severity] ?? COLORS.warning) + '18' },
                 ]}
               >
                 <Text
@@ -206,12 +329,121 @@ export const ClaimDetailScreen = ({ navigation, route }: Props) => {
           </View>
         </View>
 
+        {/* ── Photos Section ───────────────────────────────── */}
+        <View style={styles.card}>
+          <View style={styles.photoSectionHeader}>
+            <SectionTitle icon="images-outline" title="Зургууд" />
+            <TouchableOpacity
+              style={[styles.addPhotoBtn, uploading && styles.addPhotoBtnDisabled]}
+              onPress={handleAddPhoto}
+              disabled={uploading}
+              activeOpacity={0.8}
+            >
+              {uploading ? (
+                <ActivityIndicator size="small" color={COLORS.white} />
+              ) : (
+                <>
+                  <Ionicons name="camera" size={14} color={COLORS.white} />
+                  <Text style={styles.addPhotoBtnText}>Зураг нэмэх</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Upload progress indicator */}
+          {uploading && (
+            <View style={styles.uploadingBar}>
+              <ActivityIndicator size="small" color={COLORS.primary} />
+              <Text style={styles.uploadingText}>Upload хийж байна...</Text>
+            </View>
+          )}
+
+          {/* Images grid */}
+          {images.length > 0 ? (
+            <View style={styles.imagesGrid}>
+              {images.map((img) => (
+                <TouchableOpacity
+                  key={img.id}
+                  style={styles.imageThumbnail}
+                  onPress={() => {
+                    setPreviewUri(img.fileUrl);
+                    setPreviewVisible(true);
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Image
+                    source={{ uri: img.fileUrl }}
+                    style={styles.thumbnailImg}
+                    resizeMode="cover"
+                  />
+                  {/* Status overlay */}
+                  {img.status === 'analyzed' && (
+                    <View style={styles.analyzedBadge}>
+                      <Ionicons name="checkmark-circle" size={14} color={COLORS.white} />
+                    </View>
+                  )}
+                  {img.status === 'processing' && (
+                    <View style={[styles.analyzedBadge, { backgroundColor: COLORS.warning }]}>
+                      <ActivityIndicator size="small" color={COLORS.white} />
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+              {/* Add more button in grid */}
+              <TouchableOpacity
+                style={styles.addMoreBtn}
+                onPress={handleAddPhoto}
+                disabled={uploading}
+                activeOpacity={0.75}
+              >
+                <Ionicons name="add" size={28} color={COLORS.primary} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            /* Empty state */
+            <View style={styles.photoEmpty}>
+              <View style={styles.photoEmptyIcon}>
+                <Ionicons name="camera-outline" size={32} color={COLORS.textLight} />
+              </View>
+              <Text style={styles.photoEmptyTitle}>Зураг байхгүй байна</Text>
+              <Text style={styles.photoEmptySubtitle}>
+                Ослын зургийг нэмж, AI үнэлгээ авна уу
+              </Text>
+              <View style={styles.photoButtons}>
+                <TouchableOpacity
+                  style={styles.cameraBtn}
+                  onPress={handleTakePhoto}
+                  disabled={uploading}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="camera-outline" size={18} color={COLORS.white} />
+                  <Text style={styles.cameraBtnText}>Камераар авах</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.galleryBtn}
+                  onPress={handlePickFromGallery}
+                  disabled={uploading}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="images-outline" size={18} color={COLORS.primary} />
+                  <Text style={styles.galleryBtnText}>Галлерей</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* Image count */}
+          {images.length > 0 && (
+            <Text style={styles.imageCount}>{images.length} зураг нэмэгдсэн</Text>
+          )}
+        </View>
+
         {/* ── Ослын мэдээлэл ───────────────────────────────── */}
         <View style={styles.card}>
           <SectionTitle icon="warning-outline" title="Ослын мэдээлэл" />
-          <InfoRow label="Ослын төрөл"  value={TYPE_LABELS[claim.accidentType] ?? claim.accidentType} />
-          <InfoRow label="Ослын огноо"  value={accidentDate} />
-          <InfoRow label="Байршил"      value={claim.accidentLocation} />
+          <InfoRow label="Ослын төрөл" value={TYPE_LABELS[claim.accidentType] ?? claim.accidentType} />
+          <InfoRow label="Ослын огноо" value={accidentDate} />
+          <InfoRow label="Байршил" value={claim.accidentLocation} />
           {claim.latitude && claim.longitude && (
             <InfoRow
               label="GPS"
@@ -243,9 +475,7 @@ export const ClaimDetailScreen = ({ navigation, route }: Props) => {
                   {claim.vehicle.year} он • {claim.vehicle.color}
                 </Text>
                 <View style={styles.plateBox}>
-                  <Text style={styles.plateText}>
-                    {claim.vehicle.licensePlate}
-                  </Text>
+                  <Text style={styles.plateText}>{claim.vehicle.licensePlate}</Text>
                 </View>
               </View>
             </View>
@@ -256,18 +486,10 @@ export const ClaimDetailScreen = ({ navigation, route }: Props) => {
         {claim.thirdPartyInvolved && (
           <View style={styles.card}>
             <SectionTitle icon="people-outline" title="Гуравдагч тал" />
-            {claim.thirdPartyName && (
-              <InfoRow label="Нэр"         value={claim.thirdPartyName} />
-            )}
-            {claim.thirdPartyLicensePlate && (
-              <InfoRow label="Улсын дугаар" value={claim.thirdPartyLicensePlate} />
-            )}
-            {claim.thirdPartyInsurance && (
-              <InfoRow label="Даатгал"     value={claim.thirdPartyInsurance} />
-            )}
-            {claim.thirdPartyPolicyNumber && (
-              <InfoRow label="Гэрээний №"  value={claim.thirdPartyPolicyNumber} mono />
-            )}
+            {claim.thirdPartyName && <InfoRow label="Нэр" value={claim.thirdPartyName} />}
+            {claim.thirdPartyLicensePlate && <InfoRow label="Улсын дугаар" value={claim.thirdPartyLicensePlate} />}
+            {claim.thirdPartyInsurance && <InfoRow label="Даатгал" value={claim.thirdPartyInsurance} />}
+            {claim.thirdPartyPolicyNumber && <InfoRow label="Гэрээний №" value={claim.thirdPartyPolicyNumber} mono />}
           </View>
         )}
 
@@ -276,24 +498,14 @@ export const ClaimDetailScreen = ({ navigation, route }: Props) => {
           <SectionTitle icon="shield-outline" title="Цагдаагийн тайлан" />
           <View style={styles.boolRow}>
             <Ionicons
-              name={
-                claim.policeReportFiled
-                  ? 'checkmark-circle'
-                  : 'close-circle'
-              }
+              name={claim.policeReportFiled ? 'checkmark-circle' : 'close-circle'}
               size={20}
-              color={
-                claim.policeReportFiled ? COLORS.secondary : COLORS.textLight
-              }
+              color={claim.policeReportFiled ? COLORS.secondary : COLORS.textLight}
             />
             <Text
               style={[
                 styles.boolText,
-                {
-                  color: claim.policeReportFiled
-                    ? COLORS.secondary
-                    : COLORS.textMuted,
-                },
+                { color: claim.policeReportFiled ? COLORS.secondary : COLORS.textMuted },
               ]}
             >
               {claim.policeReportFiled
@@ -321,20 +533,29 @@ export const ClaimDetailScreen = ({ navigation, route }: Props) => {
 
         <View style={{ height: SPACING.xl }} />
       </ScrollView>
+
+      {/* Image preview modal */}
+      <ImagePreviewModal
+        uri={previewUri}
+        visible={previewVisible}
+        onClose={() => {
+          setPreviewVisible(false);
+          setPreviewUri(null);
+        }}
+      />
     </SafeAreaView>
   );
 };
 
 // ── Styles ────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  safe:        { flex: 1, backgroundColor: COLORS.background },
-  loadingBox:  { flex: 1, justifyContent: 'center', alignItems: 'center', gap: SPACING.sm },
+  safe: { flex: 1, backgroundColor: COLORS.background },
+  loadingBox: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: SPACING.sm },
   loadingText: { fontSize: FONT_SIZE.sm, color: COLORS.textMuted },
 
   header: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
-    paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg,
-    paddingBottom: SPACING.md,
+    paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg, paddingBottom: SPACING.md,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
     backgroundColor: COLORS.surface,
   },
@@ -344,7 +565,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', borderWidth: 1, borderColor: COLORS.border,
   },
   headerTitle: { fontSize: FONT_SIZE.lg, fontWeight: '700', color: COLORS.text },
-  headerSub:   { fontSize: FONT_SIZE.xs, color: COLORS.textMuted },
+  headerSub: { fontSize: FONT_SIZE.xs, color: COLORS.textMuted },
 
   content: { padding: SPACING.lg, gap: SPACING.md },
 
@@ -362,22 +583,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   heroClaimNumber: { fontSize: FONT_SIZE.xl, fontWeight: '800', color: COLORS.text },
-  heroDate:        { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, marginTop: 2 },
-  heroBottom:      { flexDirection: 'row', gap: SPACING.sm, flexWrap: 'wrap' },
+  heroDate: { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, marginTop: 2 },
+  heroBottom: { flexDirection: 'row', gap: SPACING.sm, flexWrap: 'wrap' },
 
-  // Status badge
   badge: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     borderRadius: RADIUS.full, paddingHorizontal: 12, paddingVertical: 5,
   },
-  badgeDot:  { width: 7, height: 7, borderRadius: 4 },
+  badgeDot: { width: 7, height: 7, borderRadius: 4 },
   badgeText: { fontSize: 12, fontWeight: '700' },
-
-  // Severity badge
   severityBadge: { borderRadius: RADIUS.full, paddingHorizontal: 12, paddingVertical: 5 },
-  severityText:  { fontSize: 12, fontWeight: '700' },
+  severityText: { fontSize: 12, fontWeight: '700' },
 
-  // Section card
+  // Card
   card: {
     backgroundColor: COLORS.surface, borderRadius: RADIUS.lg,
     padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border,
@@ -388,52 +606,131 @@ const styles = StyleSheet.create({
   financialCard: { borderColor: COLORS.secondary + '40' },
 
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
-  sectionTitle:  { fontSize: FONT_SIZE.sm, fontWeight: '700', color: COLORS.text },
+  sectionTitle: { fontSize: FONT_SIZE.sm, fontWeight: '700', color: COLORS.text },
 
   // Info row
   infoRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'flex-start', paddingVertical: 4,
-    borderBottomWidth: 1, borderBottomColor: COLORS.background,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
+    paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: COLORS.background,
   },
   infoLabel: { fontSize: FONT_SIZE.sm, color: COLORS.textMuted, flex: 1 },
   infoValue: { fontSize: FONT_SIZE.sm, color: COLORS.text, fontWeight: '500', flex: 2, textAlign: 'right' },
   monoValue: { fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
+  description: { fontSize: FONT_SIZE.sm, color: COLORS.text, lineHeight: 22, paddingTop: 4 },
 
-  // Description
-  description: {
-    fontSize: FONT_SIZE.sm, color: COLORS.text,
-    lineHeight: 22, paddingTop: 4,
-  },
-
-  // Vehicle box
+  // Vehicle
   vehicleBox: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
     backgroundColor: COLORS.background, borderRadius: RADIUS.md, padding: SPACING.md,
   },
   vehicleIcon: {
     width: 48, height: 48, borderRadius: RADIUS.sm,
-    backgroundColor: COLORS.primary + '12',
-    justifyContent: 'center', alignItems: 'center',
+    backgroundColor: COLORS.primary + '12', justifyContent: 'center', alignItems: 'center',
   },
   vehicleName: { fontSize: FONT_SIZE.md, fontWeight: '700', color: COLORS.text },
-  vehicleSub:  { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, marginTop: 2 },
-  plateBox:    {
+  vehicleSub: { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, marginTop: 2 },
+  plateBox: {
     marginTop: 6, backgroundColor: COLORS.surface, borderRadius: RADIUS.sm,
     paddingHorizontal: 10, paddingVertical: 3, alignSelf: 'flex-start',
     borderWidth: 1, borderColor: COLORS.border,
   },
   plateText: { fontSize: FONT_SIZE.sm, fontWeight: '700', color: COLORS.text, letterSpacing: 1 },
 
-  // Bool row
   boolRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   boolText: { fontSize: FONT_SIZE.sm, fontWeight: '500' },
 
-  // Financial
-  costBox:   { backgroundColor: COLORS.background, borderRadius: RADIUS.md, padding: SPACING.md, alignItems: 'center' },
+  costBox: { backgroundColor: COLORS.background, borderRadius: RADIUS.md, padding: SPACING.md, alignItems: 'center' },
   costLabel: { fontSize: FONT_SIZE.sm, color: COLORS.textMuted },
   costValue: { fontSize: FONT_SIZE.xxl, fontWeight: '800', color: COLORS.secondary, marginTop: 4 },
-});
 
-// Platform import (monoValue style-д ашиглана)
-//import { Platform } from 'react-native';
+  // ── Photos section ────────────────────────────────────────────
+  photoSectionHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+  },
+  addPhotoBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: COLORS.primary, borderRadius: RADIUS.sm,
+    paddingHorizontal: 12, paddingVertical: 7,
+  },
+  addPhotoBtnDisabled: { opacity: 0.6 },
+  addPhotoBtnText: { color: COLORS.white, fontSize: FONT_SIZE.xs, fontWeight: '700' },
+
+  uploadingBar: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+    backgroundColor: COLORS.primary + '10', borderRadius: RADIUS.sm,
+    padding: SPACING.sm,
+  },
+  uploadingText: { fontSize: FONT_SIZE.sm, color: COLORS.primary, fontWeight: '500' },
+
+  // Images grid
+  imagesGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm,
+  },
+  imageThumbnail: {
+    width: IMAGE_SIZE, height: IMAGE_SIZE,
+    borderRadius: RADIUS.sm, overflow: 'hidden',
+    backgroundColor: COLORS.border,
+  },
+  thumbnailImg: { width: '100%', height: '100%' },
+  analyzedBadge: {
+    position: 'absolute', top: 4, right: 4,
+    width: 20, height: 20, borderRadius: 10,
+    backgroundColor: COLORS.secondary,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  addMoreBtn: {
+    width: IMAGE_SIZE, height: IMAGE_SIZE,
+    borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.primary + '10',
+    borderWidth: 2, borderColor: COLORS.primary + '40',
+    borderStyle: 'dashed',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  imageCount: {
+    fontSize: FONT_SIZE.xs, color: COLORS.textMuted,
+    textAlign: 'right', marginTop: 4,
+  },
+
+  // Photo empty state
+  photoEmpty: {
+    alignItems: 'center', paddingVertical: SPACING.lg, gap: SPACING.sm,
+  },
+  photoEmptyIcon: {
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  photoEmptyTitle: { fontSize: FONT_SIZE.sm, fontWeight: '700', color: COLORS.textMuted },
+  photoEmptySubtitle: {
+    fontSize: FONT_SIZE.xs, color: COLORS.textLight,
+    textAlign: 'center', lineHeight: 18,
+  },
+  photoButtons: { flexDirection: 'row', gap: SPACING.sm, marginTop: 4 },
+  cameraBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: COLORS.primary, borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.md, paddingVertical: 10,
+    shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25, shadowRadius: 6, elevation: 3,
+  },
+  cameraBtnText: { color: COLORS.white, fontWeight: '700', fontSize: FONT_SIZE.sm },
+  galleryBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    borderRadius: RADIUS.sm, paddingHorizontal: SPACING.md, paddingVertical: 10,
+    borderWidth: 1.5, borderColor: COLORS.primary,
+    backgroundColor: COLORS.surface,
+  },
+  galleryBtnText: { color: COLORS.primary, fontWeight: '700', fontSize: FONT_SIZE.sm },
+
+  // Preview modal
+  previewOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.92)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  previewClose: {
+    position: 'absolute', top: 50, right: 20, zIndex: 10,
+  },
+  previewImage: {
+    width: SCREEN_W, height: SCREEN_W * 0.85,
+  },
+});
