@@ -71,11 +71,10 @@ export class ImagesService {
       );
     }
 
-    // 4. File URL үүсгэх
-    // Development: http://localhost:3000/uploads/uuid.jpg
+    // 4. File URL үүсгэх (relative path ашиглана)
+    // Development: /uploads/uuid.jpg (frontend-ээс өөрөө full URL үүсгэнэ)
     // Production: CDN эсвэл S3 URL ашиглана
-    const baseUrl = this.getBaseUrl();
-    const fileUrl = `${baseUrl}/uploads/${file.filename}`;
+    const fileUrl = `/uploads/${file.filename}`;
 
     // 5. Image entity үүсгэж database-д хадгалах
     const image = this.imageRepository.create({

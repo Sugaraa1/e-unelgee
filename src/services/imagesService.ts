@@ -66,3 +66,25 @@ export const getClaimImages = async (claimId: string): Promise<UploadedImage[]> 
   );
   return data.data;
 };
+
+/**
+ * Helper function to construct proper image URL
+ * Handles both relative (/uploads/...) and absolute (http://...) URLs
+ */
+export const getImageUrl = (fileUrl: string): string => {
+  if (!fileUrl) return '';
+  
+  // If it's already an absolute URL, return it
+  if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
+    return fileUrl;
+  }
+  
+  // If it's a relative path, construct full URL
+  if (fileUrl.startsWith('/uploads/')) {
+    const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.100:3000/api/v1';
+    const baseUrl = API_BASE_URL.replace('/api/v1', '');
+    return `${baseUrl}${fileUrl}`;
+  }
+  
+  return fileUrl;
+};

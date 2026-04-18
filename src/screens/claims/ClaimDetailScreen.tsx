@@ -20,7 +20,7 @@ import { RouteProp } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, STATUS_COLORS } from '../../constants';
 import { getClaimById } from '../../services/claimsService';
-import { uploadClaimImage, getClaimImages, UploadedImage } from '../../services/imagesService';
+import { uploadClaimImage, getClaimImages, getImageUrl, UploadedImage } from '../../services/imagesService';
 import type { Claim, ClaimsStackParamList } from '../../types';
 
 type Props = {
@@ -366,13 +366,13 @@ export const ClaimDetailScreen = ({ navigation, route }: Props) => {
                   key={img.id}
                   style={styles.imageThumbnail}
                   onPress={() => {
-                    setPreviewUri(img.fileUrl);
+                    setPreviewUri(getImageUrl(img.fileUrl));
                     setPreviewVisible(true);
                   }}
                   activeOpacity={0.85}
                 >
                   <Image
-                    source={{ uri: img.fileUrl }}
+                    source={{ uri: getImageUrl(img.fileUrl) }}
                     style={styles.thumbnailImg}
                     resizeMode="cover"
                   />
