@@ -44,3 +44,4 @@ accident-assessment-backend/uploads/*
 !accident-assessment-backend/uploads/.gitkeep
 
 CODE_REPORT.md
+accident-assessment-backend/.env
