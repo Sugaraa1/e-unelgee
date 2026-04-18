@@ -123,7 +123,13 @@ export class ImagesController {
   @Get()
   @ApiOperation({
     summary: 'Claim-ийн зургуудыг авах',
-    description: 'Тухайн claim-д хамаарах бүх зургийг буцаана',
+    description: `Тухайн claim-д хамаарах бүх зургийг буцаана.
+    
+    🤖 AI Analysis статус:
+    - pending: зургийн удаа байна
+    - processing: AI анализ явж байна
+    - analyzed: ✅ AI analysis дууссан, aiAnalysisResult буцаана
+    - failed: ❌ AI анализ бүтэлгүй болсон`,
   })
   @ApiQuery({
     name: 'claimId',
@@ -131,7 +137,7 @@ export class ImagesController {
     required: true,
     type: String,
   })
-  @ApiResponse({ status: 200, description: 'Зургуудын жагсаалт' })
+  @ApiResponse({ status: 200, description: 'Зургуудын жагсаалт (AI result орсон)' })
   @ApiResponse({ status: 403, description: 'Хандах эрх байхгүй' })
   @ApiResponse({ status: 404, description: 'Claim олдсонгүй' })
   async getImagesByClaim(

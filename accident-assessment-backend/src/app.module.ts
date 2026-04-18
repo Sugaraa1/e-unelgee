@@ -6,6 +6,7 @@ import { UsersModule } from './users/users.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
 import { ClaimsModule } from './claims/claims.module';
 import { ImagesModule } from './images/images.module';
+import { AIModule } from './ai/ai.module';
 import { DamageAssessmentModule } from './damage-assessment/damage-assessment.module';
 import { databaseConfig } from './config/database.config';
 
@@ -22,6 +23,7 @@ import { databaseConfig } from './config/database.config';
     VehiclesModule,
     ClaimsModule,
     ImagesModule,
+    AIModule,
     DamageAssessmentModule,
   ],
 })

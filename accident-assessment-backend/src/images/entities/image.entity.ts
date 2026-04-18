@@ -73,18 +73,16 @@ export class Image {
   // ── AI Analysis Results ───────────────────────────────────────
   @Column({ type: 'jsonb', nullable: true })
   aiAnalysisResult: {
-    damagedParts: string[];
-    damageLevel: string;
-    confidence: number;
-    boundingBoxes?: Array<{
-      part: string;
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-      severity: string;
+    damagedParts: Array<{
+      partName: string;
+      damageType: 'scratch' | 'dent' | 'crack' | 'broken' | 'paint_damage' | 'glass_damage';
+      severity: 'minor' | 'moderate' | 'severe';
+      confidence: number;
     }>;
-    rawResponse?: Record<string, unknown>;
+    overallSeverity: 'none' | 'minor' | 'moderate' | 'severe';
+    overallConfidence: number;
+    analysisDetails: string;
+    recommendations: string[];
   };
 
   @Column({ type: 'decimal', precision: 5, scale: 4, nullable: true })
@@ -92,6 +90,9 @@ export class Image {
 
   @Column({ type: 'text', nullable: true })
   aiErrorMessage: string;
+
+  @Column({ type: 'int', default: 0 })
+  aiRetryCount: number;   // retry count for failed AI analysis
 
   @Column({ type: 'timestamp', nullable: true })
   analyzedAt: Date;
