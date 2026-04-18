@@ -1,42 +1,53 @@
+
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { NestExpressApplication } from '@nestjs/platform-express';  // ← ШИНЭ
+import { join } from 'path';                                         // ← ШИНЭ
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
-
+ 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // ── NestExpressApplication type ашиглана ─────────────────────
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService);
-
-  // ── Prefix & Versioning ────────────────────────────────────────
+ 
   const apiPrefix = configService.get<string>('API_PREFIX', 'api/v1');
   app.setGlobalPrefix(apiPrefix);
-
-  // ── CORS ───────────────────────────────────────────────────────
+ 
   const origins = configService.get<string>('CORS_ORIGINS', '').split(',');
   app.enableCors({
     origin: origins,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     credentials: true,
   });
-
-  // ── Global Pipes ───────────────────────────────────────────────
+ 
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,          // strip unknown fields
+      whitelist: true,
       forbidNonWhitelisted: true,
-      transform: true,          // auto-transform payloads to DTO instances
+      transform: true,
       transformOptions: { enableImplicitConversion: true },
     }),
   );
-
-  // ── Global Filters & Interceptors ─────────────────────────────
+ 
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(new TransformInterceptor());
-
-  // ── Swagger ────────────────────────────────────────────────────
+ 
+  // ── 🆕 Static files serve ─────────────────────────────────────
+  // /uploads/ route руу хандахад ./uploads фолдерын файлуудыг буцаана
+  // Жишэ: GET http://localhost:3000/uploads/uuid.jpg
+  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+    prefix: '/uploads/',
+  });
+ 
+  // ── 🆕 Multer payload limit (5MB + overhead) ──────────────────
+  // Express-ийн default limit 100kb тул 10MB болгоно
+  app.use(require('express').json({ limit: '10mb' }));
+  app.use(require('express').urlencoded({ limit: '10mb', extended: true }));
+ 
   if (configService.get<string>('NODE_ENV') !== 'production') {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('Accident Assessment API')
@@ -47,18 +58,19 @@ async function bootstrap() {
         'access-token',
       )
       .build();
-
+ 
     const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup(`${apiPrefix}/docs`, app, document, {
       swaggerOptions: { persistAuthorization: true },
     });
   }
-
-  // ── Start ──────────────────────────────────────────────────────
+ 
   const port = configService.get<number>('PORT', 3000);
   await app.listen(port);
   console.log(`\n🚀 Server running on: http://localhost:${port}/${apiPrefix}`);
-  console.log(`📄 Swagger docs:      http://localhost:${port}/${apiPrefix}/docs\n`);
+  console.log(`📄 Swagger docs:      http://localhost:${port}/${apiPrefix}/docs`);
+  console.log(`🖼️  Static uploads:   http://localhost:${port}/uploads/\n`);
 }
-
+ 
 bootstrap();
+ 
