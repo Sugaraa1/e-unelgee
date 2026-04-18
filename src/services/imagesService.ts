@@ -10,8 +10,25 @@ export interface UploadedImage {
   mimeType: string;
   fileSize: number;
   imageType: string;
-  status: string;
+  status: 'pending' | 'processing' | 'analyzed' | 'failed';
   createdAt: string;
+  // AI Analysis fields (optional)
+  aiAnalysisResult?: {
+    damagedParts?: Array<{
+      partName: string;
+      damageType: string;
+      severity: string;
+      confidence: number;
+    }>;
+    overallSeverity?: string;
+    overallConfidence?: number;
+    recommendations?: string[];
+    analysisDetails?: string;
+  };
+  aiConfidenceScore?: number;
+  aiErrorMessage?: string;
+  analyzedAt?: string;
+  aiRetryCount?: number;
 }
 
 /**
