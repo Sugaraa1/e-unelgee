@@ -8,6 +8,7 @@ import { ClaimsModule } from './claims/claims.module';
 import { ImagesModule } from './images/images.module';
 import { AIModule } from './ai/ai.module';
 import { DamageAssessmentModule } from './damage-assessment/damage-assessment.module';
+import { AdminModule } from './admin/admin.module';
 import { databaseConfig } from './config/database.config';
 
 @Module({
@@ -25,6 +26,7 @@ import { databaseConfig } from './config/database.config';
     ImagesModule,
     AIModule,
     DamageAssessmentModule,
+    AdminModule,
   ],
 })
 export class AppModule {}

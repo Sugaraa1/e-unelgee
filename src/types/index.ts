@@ -143,6 +143,7 @@ export type MainTabParamList = {
   Dashboard: undefined;
   Claims: undefined;
   Vehicles: undefined;
+  Admin: undefined;
   Profile: undefined;
 };
 

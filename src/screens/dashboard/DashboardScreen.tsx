@@ -49,6 +49,17 @@ export const DashboardScreen = () => {
           </TouchableOpacity>
         </View>
 
+        {/* DEBUG: Show user role */}
+        <View style={styles.debugBox}>
+          <Text style={styles.debugLabel}>User Role:</Text>
+          <Text style={styles.debugValue}>{user?.role || 'unknown'}</Text>
+          {user?.role !== 'admin' && (
+            <Text style={styles.debugHint}>
+              💡 To see Admin Dashboard, your role must be "admin"
+            </Text>
+          )}
+        </View>
+
         {/* Stats */}
         <Text style={styles.sectionTitle}>Тойм</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsRow}>
@@ -107,4 +118,10 @@ const styles = StyleSheet.create({
   emptyBox:     { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING.xl, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
   emptyText:    { fontSize: FONT_SIZE.md, fontWeight: '600', color: COLORS.textMuted, marginTop: SPACING.sm },
   emptySubtext: { fontSize: FONT_SIZE.sm, color: COLORS.textLight, textAlign: 'center', marginTop: SPACING.xs, lineHeight: 20 },
+
+  // Debug styles
+  debugBox:     { backgroundColor: '#FFF3CD', borderRadius: RADIUS.md, padding: SPACING.md, marginVertical: SPACING.md, borderLeftWidth: 4, borderLeftColor: '#FFC107' },
+  debugLabel:   { fontSize: FONT_SIZE.sm, fontWeight: '600', color: '#856404' },
+  debugValue:   { fontSize: FONT_SIZE.md, fontWeight: '700', color: '#2C3E50', marginTop: 4 },
+  debugHint:    { fontSize: FONT_SIZE.xs, color: '#856404', marginTop: 8, fontStyle: 'italic' },
 });

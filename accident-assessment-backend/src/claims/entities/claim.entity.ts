@@ -116,10 +116,34 @@ export class Claim {
   estimatedRepairCost: number;   // from AI assessment
 
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  suggestedPayout: number;       // AI decision suggested amount
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
   approvedAmount: number;        // set by adjuster
 
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
   deductibleAmount: number;
+
+  // ── AI Decision ────────────────────────────────────────────────
+  @Column({
+    type: 'enum',
+    enum: ['auto_approve', 'needs_review', 'total_loss'],
+    nullable: true,
+  })
+  aiDecision: 'auto_approve' | 'needs_review' | 'total_loss';
+
+  @Column({
+    type: 'enum',
+    enum: ['low', 'medium', 'high'],
+    nullable: true,
+  })
+  riskLevel: 'low' | 'medium' | 'high';
+
+  @Column({ default: false })
+  requiresManualReview: boolean;
+
+  @Column({ type: 'text', nullable: true })
+  notes: string;
 
   // ── Review Info ───────────────────────────────────────────────
   @Column({ nullable: true })
@@ -134,6 +158,27 @@ export class Claim {
 
   @Column({ type: 'text', nullable: true })
   reviewNotes: string;
+
+  // ── Adjuster Approval ──────────────────────────────────────────
+  @Column({ nullable: true })
+  approvedById: string;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'approvedById' })
+  approvedBy: User;
+
+  @Column({ type: 'timestamp', nullable: true })
+  approvedAt: Date;
+
+  @Column({ nullable: true })
+  rejectedById: string;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'rejectedById' })
+  rejectedBy: User;
+
+  @Column({ type: 'timestamp', nullable: true })
+  rejectedAt: Date;
 
   @Column({ type: 'text', nullable: true })
   rejectionReason: string;
