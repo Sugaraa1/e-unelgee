@@ -1,5 +1,6 @@
 import apiClient from './apiClient';
 import type { ApiResponse } from '../types';
+import type { AxiosProgressEvent } from 'axios';
 
 export interface UploadedImage {
   id: string;
@@ -59,7 +60,7 @@ export const uploadClaimImage = async (
         'Content-Type': 'multipart/form-data',
       },
       // Upload явцыг хянах (optional)
-      onUploadProgress: (progressEvent) => {
+      onUploadProgress: (progressEvent: AxiosProgressEvent) => {
         if (progressEvent.total) {
           const percent = Math.round(
             (progressEvent.loaded * 100) / progressEvent.total,
