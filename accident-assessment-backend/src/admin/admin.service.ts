@@ -104,10 +104,10 @@ export class AdminService {
       }),
     ]);
 
-    // Calculate total payout and average
+    // ✅ suggestedPayout → approvedAmount (entity-д байгаа field)
     const payoutStats = await this.claimRepository
       .createQueryBuilder('claim')
-      .select('SUM(claim.suggestedPayout)', 'totalPayout')
+      .select('SUM(claim.approvedAmount)', 'totalPayout')
       .addSelect('AVG(claim.estimatedRepairCost)', 'avgCost')
       .where('claim.status = :status', { status: ClaimStatus.APPROVED })
       .getRawOne();
@@ -153,7 +153,7 @@ export class AdminService {
   }
 
   /**
-   * Get claims per day for last 7 days
+   * Get claims per day for last N days
    */
   async getClaimsByDay(days: number = 7): Promise<ClaimsByDay[]> {
     this.logger.log(`Fetching claims by day (last ${days} days)`);
@@ -163,10 +163,10 @@ export class AdminService {
 
     const results = await this.claimRepository
       .createQueryBuilder('claim')
-      .select("DATE(claim.createdAt)", 'date')
+      .select('DATE(claim.createdAt)', 'date')
       .addSelect('COUNT(claim.id)', 'count')
       .where('claim.createdAt >= :startDate', { startDate })
-      .groupBy("DATE(claim.createdAt)")
+      .groupBy('DATE(claim.createdAt)')
       .orderBy('date', 'ASC')
       .getRawMany();
 
@@ -182,21 +182,20 @@ export class AdminService {
   async getTopDamageTypes(limit: number = 10): Promise<DamageTypeStats[]> {
     this.logger.log('Fetching top damage types');
 
-    // Get all damage assessments with their AI results
     const assessments = await this.damageAssessmentRepository
       .createQueryBuilder('da')
       .select('da.id', 'id')
       .addSelect('da.aiAnalysisResult', 'result')
       .getRawMany();
 
-    // Parse JSON and count damage types
     const damageTypeMap = new Map<string, number>();
 
     assessments.forEach((assessment) => {
       try {
-        const result = typeof assessment.result === 'string'
-          ? JSON.parse(assessment.result)
-          : assessment.result;
+        const result =
+          typeof assessment.result === 'string'
+            ? JSON.parse(assessment.result)
+            : assessment.result;
 
         if (result?.damagedParts && Array.isArray(result.damagedParts)) {
           result.damagedParts.forEach((part: any) => {
@@ -204,12 +203,11 @@ export class AdminService {
             damageTypeMap.set(type, (damageTypeMap.get(type) || 0) + 1);
           });
         }
-      } catch (e) {
+      } catch {
         // Skip invalid JSON
       }
     });
 
-    // Convert to array and sort
     const total = Array.from(damageTypeMap.values()).reduce(
       (sum, count) => sum + count,
       0,
@@ -218,7 +216,7 @@ export class AdminService {
       .map(([type, count]) => ({
         damageType: type,
         count,
-        percentage: total > 0 ? (count / total) * 100 : 0,
+        percentage: total > 0 ? Math.round((count / total) * 100 * 10) / 10 : 0,
       }))
       .sort((a, b) => b.count - a.count)
       .slice(0, limit);
@@ -229,9 +227,7 @@ export class AdminService {
   /**
    * Get high-risk claims
    */
-  async getHighRiskClaims(
-    limit: number = 20,
-  ): Promise<HighRiskClaimSummary[]> {
+  async getHighRiskClaims(limit: number = 20): Promise<HighRiskClaimSummary[]> {
     this.logger.log('Fetching high-risk claims');
 
     const claims = await this.claimRepository
@@ -246,10 +242,15 @@ export class AdminService {
       id: claim.id,
       claimNumber: claim.claimNumber,
       riskLevel: claim.riskLevel as 'low' | 'medium' | 'high',
-      suggestedPayout: claim.suggestedPayout ? Number(claim.suggestedPayout) : 0,
+      // ✅ suggestedPayout field entity-д байгаа тул OK
+      suggestedPayout: claim.suggestedPayout
+        ? Number(claim.suggestedPayout)
+        : 0,
       status: claim.status,
       createdAt: claim.createdAt,
-      vehicleInfo: `${claim.vehicle?.make} ${claim.vehicle?.model} (${claim.vehicle?.year})`,
+      vehicleInfo: claim.vehicle
+        ? `${claim.vehicle.make} ${claim.vehicle.model} (${claim.vehicle.year})`
+        : 'Мэдээлэл байхгүй',
     }));
   }
 
@@ -269,7 +270,6 @@ export class AdminService {
     const alerts: FraudAlert[] = [];
 
     for (const claim of claims) {
-      // Check fraud indicators for each claim
       const fraudResult = await this.checkFraudIndicators(claim.id);
 
       if (fraudResult.flags && fraudResult.flags.length > 0) {
@@ -302,12 +302,14 @@ export class AdminService {
     }
 
     const flags: string[] = [];
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
 
-    // 1. Multiple claims within short period
+    // 1. ✅ MoreThan() ашиглан TypeORM-ийн зөв хэлбэрээр шүүлт хийнэ
     const recentClaims = await this.claimRepository.count({
       where: {
         submittedById: claim.submittedById,
-        createdAt: MoreThan(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)),
+        createdAt: MoreThan(thirtyDaysAgo),
       },
     });
 
@@ -325,11 +327,11 @@ export class AdminService {
       }
     }
 
-    // 3. Same vehicle multiple claims
+    // 3. ✅ MoreThan() ашиглан ижил тээврийн олон claim шалгана
     const vehicleClaims = await this.claimRepository.count({
       where: {
         vehicleId: claim.vehicleId,
-        createdAt: MoreThan(new Date(Date.now() - 60 * 24 * 60 * 60 * 1000)),
+        createdAt: MoreThan(sixtyDaysAgo),
       },
     });
 
@@ -359,17 +361,13 @@ export class AdminService {
   async getQuickStats() {
     this.logger.log('Fetching quick stats');
 
-    const [
-      todayClaims,
-      weekClaims,
-      monthClaims,
-      todayPayout,
-    ] = await Promise.all([
-      this.getClaimsInPeriod(1),
-      this.getClaimsInPeriod(7),
-      this.getClaimsInPeriod(30),
-      this.getPayoutInPeriod(1),
-    ]);
+    const [todayClaims, weekClaims, monthClaims, todayPayout] =
+      await Promise.all([
+        this.getClaimsInPeriod(1),
+        this.getClaimsInPeriod(7),
+        this.getClaimsInPeriod(30),
+        this.getPayoutInPeriod(1),
+      ]);
 
     return {
       todayClaims,
@@ -386,6 +384,7 @@ export class AdminService {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
+    // ✅ MoreThan() ашиглах
     return this.claimRepository.count({
       where: {
         createdAt: MoreThan(startDate),
@@ -400,11 +399,12 @@ export class AdminService {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
+    // ✅ approvedAmount ашиглах, where-г нэг удаа дуудах
     const result = await this.claimRepository
       .createQueryBuilder('claim')
-      .select('SUM(claim.suggestedPayout)', 'total')
+      .select('SUM(claim.approvedAmount)', 'total')
       .where('claim.createdAt >= :startDate', { startDate })
-      .where('claim.status = :status', { status: ClaimStatus.APPROVED })
+      .andWhere('claim.status = :status', { status: ClaimStatus.APPROVED })
       .getRawOne();
 
     return result?.total ? parseFloat(result.total) : 0;
@@ -414,7 +414,7 @@ export class AdminService {
    * Helper: Calculate vehicle market value
    */
   private calculateVehicleValue(vehicle: any): number {
-    const baseValue = 5000000; // Default base (₮)
+    const baseValue = 5_000_000;
     const currentYear = new Date().getFullYear();
     const age = currentYear - Number(vehicle.year);
     const depreciation = Math.min(age * 0.15, 0.7);
