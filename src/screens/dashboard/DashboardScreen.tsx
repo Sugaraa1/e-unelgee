@@ -230,7 +230,6 @@ export const DashboardScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Greeting animation
   const headerAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -264,7 +263,10 @@ export const DashboardScreen = () => {
   // ── Computed stats ──────────────────────────────────────────
   const totalClaims = claims.length;
   const pendingClaims = claims.filter(
-    (c) => c.status === 'submitted' || c.status === 'under_review' || c.status === 'pending_inspection',
+    (c) =>
+      c.status === 'submitted' ||
+      c.status === 'under_review' ||
+      c.status === 'pending_inspection',
   ).length;
   const approvedClaims = claims.filter((c) => c.status === 'approved').length;
   const totalVehicles = vehicles.length;
@@ -313,7 +315,9 @@ export const DashboardScreen = () => {
           >
             <View style={cs.headerLeft}>
               <Text style={cs.greeting}>{greeting},</Text>
-              <Text style={cs.userName}>{user?.firstName} {user?.lastName}</Text>
+              <Text style={cs.userName}>
+                {user?.firstName} {user?.lastName}
+              </Text>
               {user?.role === 'admin' && (
                 <View style={cs.rolePill}>
                   <Ionicons name="shield-checkmark" size={11} color="#fff" />
@@ -321,9 +325,11 @@ export const DashboardScreen = () => {
                 </View>
               )}
             </View>
+
+            {/* Notification Bell — navigates to NotificationsScreen */}
             <TouchableOpacity
               style={cs.notifBtn}
-              onPress={() => {}}
+              onPress={() => navigation.navigate('Notifications')}
               activeOpacity={0.8}
             >
               <Ionicons name="notifications-outline" size={22} color={COLORS.text} />
@@ -396,9 +402,7 @@ export const DashboardScreen = () => {
               color="#0E9F6E"
               bgColor="#ECFDF5"
               onPress={() =>
-                navigation.navigate('Claims', {
-                  screen: 'ClaimsList',
-                })
+                navigation.navigate('Claims', { screen: 'ClaimsList' })
               }
             />
             <QuickAction
@@ -414,9 +418,7 @@ export const DashboardScreen = () => {
               color="#FF8A00"
               bgColor="#FFF8EE"
               onPress={() =>
-                navigation.navigate('Claims', {
-                  screen: 'ClaimsList',
-                })
+                navigation.navigate('Claims', { screen: 'ClaimsList' })
               }
             />
             {user?.role === 'admin' && (
@@ -429,11 +431,12 @@ export const DashboardScreen = () => {
               />
             )}
             <QuickAction
-              icon="person-circle"
-              label="Профайл"
+              icon="notifications-outline"
+              label="Мэдэгдлүүд"
               color="#6B7280"
               bgColor="#F9FAFB"
-              onPress={() => navigation.navigate('Profile')}
+              badge={pendingClaims > 0 ? String(pendingClaims) : undefined}
+              onPress={() => navigation.navigate('Notifications')}
             />
           </View>
         </View>
@@ -513,7 +516,11 @@ export const DashboardScreen = () => {
                 <Ionicons name="chevron-forward" size={14} color={COLORS.primary} />
               </TouchableOpacity>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -SPACING.lg }}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginHorizontal: -SPACING.lg }}
+            >
               <View style={{ flexDirection: 'row', paddingHorizontal: SPACING.lg, gap: 12 }}>
                 {vehicles.slice(0, 5).map((v) => (
                   <TouchableOpacity
@@ -559,7 +566,6 @@ const cs = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F8FAFC' },
   scroll: { flex: 1 },
 
-  // Hero
   heroSection: {
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.lg,
@@ -568,8 +574,6 @@ const cs = StyleSheet.create({
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
-
-    // 3D card shadow
     ...Platform.select({
       ios: {
         shadowColor: '#1A56DB',
@@ -581,24 +585,14 @@ const cs = StyleSheet.create({
     }),
   },
   heroBg: {
-    position: 'absolute',
-    top: -40,
-    right: -40,
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: '#EFF6FF',
-    opacity: 0.6,
+    position: 'absolute', top: -40, right: -40,
+    width: 180, height: 180, borderRadius: 90,
+    backgroundColor: '#EFF6FF', opacity: 0.6,
   },
   heroBg2: {
-    position: 'absolute',
-    bottom: -20,
-    left: -20,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#F0FDF4',
-    opacity: 0.5,
+    position: 'absolute', bottom: -20, left: -20,
+    width: 120, height: 120, borderRadius: 60,
+    backgroundColor: '#F0FDF4', opacity: 0.5,
   },
 
   header: {
@@ -610,181 +604,106 @@ const cs = StyleSheet.create({
   },
   headerLeft: { flex: 1 },
   greeting: { fontSize: FONT_SIZE.sm, color: COLORS.textMuted, marginBottom: 2 },
-  userName: { fontSize: FONT_SIZE.xl + 2, fontWeight: '800', color: COLORS.text, letterSpacing: -0.5 },
+  userName: {
+    fontSize: FONT_SIZE.xl + 2,
+    fontWeight: '800',
+    color: COLORS.text,
+    letterSpacing: -0.5,
+  },
   rolePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: COLORS.danger,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    alignSelf: 'flex-start',
-    marginTop: 6,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: COLORS.danger, borderRadius: RADIUS.full,
+    paddingHorizontal: 8, paddingVertical: 3,
+    alignSelf: 'flex-start', marginTop: 6,
   },
   rolePillText: { fontSize: 10, fontWeight: '700', color: '#fff' },
 
   notifBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.md,
-    backgroundColor: '#F8FAFC',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    position: 'relative',
+    width: 44, height: 44, borderRadius: RADIUS.md,
+    backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: '#E5E7EB', position: 'relative',
   },
   notifBadge: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: COLORS.danger,
-    justifyContent: 'center',
-    alignItems: 'center',
+    position: 'absolute', top: 6, right: 6,
+    minWidth: 16, height: 16, borderRadius: 8,
+    backgroundColor: COLORS.danger, justifyContent: 'center', alignItems: 'center',
     paddingHorizontal: 3,
   },
   notifBadgeText: { fontSize: 9, color: '#fff', fontWeight: '700' },
 
-  // Stats
   statsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingTop: 4,
-    paddingBottom: 4,
+    flexDirection: 'row', gap: 10, paddingTop: 4, paddingBottom: 4,
   },
   statCard: {
-    backgroundColor: '#fff',
-    borderRadius: RADIUS.md,
-    padding: 12,
-    flex: 1,
-    borderTopWidth: 3,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    position: 'relative',
-    overflow: 'hidden',
-    // 3D shadow
+    backgroundColor: '#fff', borderRadius: RADIUS.md, padding: 12, flex: 1,
+    borderTopWidth: 3, borderWidth: 1, borderColor: '#F1F5F9',
+    position: 'relative', overflow: 'hidden',
     ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.1,
-        shadowRadius: 6,
-      },
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.1, shadowRadius: 6 },
       android: { elevation: 3 },
     }),
   },
   statCardEdge: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 3,
-    borderBottomLeftRadius: RADIUS.md,
-    borderBottomRightRadius: RADIUS.md,
+    position: 'absolute', bottom: 0, left: 0, right: 0, height: 3,
+    borderBottomLeftRadius: RADIUS.md, borderBottomRightRadius: RADIUS.md,
   },
   statIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: RADIUS.sm,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
+    width: 34, height: 34, borderRadius: RADIUS.sm,
+    justifyContent: 'center', alignItems: 'center', marginBottom: 8,
   },
   statValue: { fontSize: FONT_SIZE.xl, fontWeight: '800', color: COLORS.text },
   statLabel: { fontSize: 10, color: COLORS.textMuted, marginTop: 2 },
 
-  // Section
   section: { paddingHorizontal: SPACING.lg, marginTop: SPACING.lg },
-  sectionTitle: { fontSize: FONT_SIZE.md + 1, fontWeight: '700', color: COLORS.text, marginBottom: SPACING.sm },
-  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm },
+  sectionTitle: {
+    fontSize: FONT_SIZE.md + 1, fontWeight: '700', color: COLORS.text, marginBottom: SPACING.sm,
+  },
+  sectionRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: SPACING.sm,
+  },
   seeAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   seeAllText: { fontSize: FONT_SIZE.sm, color: COLORS.primary, fontWeight: '600' },
 
-  // Actions Grid
-  actionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
+  actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   actionWrap: { width: (SCREEN_W - SPACING.lg * 2 - 12 * 2) / 3 },
   actionCard: {
-    backgroundColor: '#fff',
-    borderRadius: RADIUS.lg,
-    padding: 14,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    position: 'relative',
-    overflow: 'hidden',
+    backgroundColor: '#fff', borderRadius: RADIUS.lg, padding: 14, alignItems: 'center',
+    borderWidth: 1, borderColor: '#F1F5F9', position: 'relative', overflow: 'hidden',
     ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
-      },
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 8 },
       android: { elevation: 4 },
     }),
   },
   actionCardShadow: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 4,
-    borderBottomLeftRadius: RADIUS.lg,
-    borderBottomRightRadius: RADIUS.lg,
+    position: 'absolute', bottom: 0, left: 0, right: 0, height: 4,
+    borderBottomLeftRadius: RADIUS.lg, borderBottomRightRadius: RADIUS.lg,
   },
   actionIconBox: {
-    width: 52,
-    height: 52,
-    borderRadius: RADIUS.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-    position: 'relative',
+    width: 52, height: 52, borderRadius: RADIUS.md,
+    justifyContent: 'center', alignItems: 'center', marginBottom: 8, position: 'relative',
   },
   actionBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 3,
+    position: 'absolute', top: -4, right: -4,
+    minWidth: 16, height: 16, borderRadius: 8,
+    justifyContent: 'center', alignItems: 'center', paddingHorizontal: 3,
   },
   actionBadgeText: { fontSize: 9, color: '#fff', fontWeight: '700' },
-  actionLabel: { fontSize: 11, fontWeight: '600', color: COLORS.text, textAlign: 'center', lineHeight: 15 },
+  actionLabel: {
+    fontSize: 11, fontWeight: '600', color: COLORS.text, textAlign: 'center', lineHeight: 15,
+  },
 
-  // Claims
   claimsCard: {
-    backgroundColor: '#fff',
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    overflow: 'hidden',
+    backgroundColor: '#fff', borderRadius: RADIUS.lg, borderWidth: 1,
+    borderColor: '#F1F5F9', overflow: 'hidden',
     ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 8,
-      },
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 },
       android: { elevation: 2 },
     }),
   },
   claimRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 13,
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+    paddingHorizontal: SPACING.md, paddingVertical: 13,
   },
   claimDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
   claimNumber: { fontSize: FONT_SIZE.sm, fontWeight: '700', color: COLORS.text },
@@ -794,60 +713,33 @@ const cs = StyleSheet.create({
   claimDate: { fontSize: 10, color: COLORS.textLight },
   divider: { height: 1, backgroundColor: '#F8FAFC', marginHorizontal: SPACING.md },
 
-  // Empty
   emptyBox: { alignItems: 'center', padding: SPACING.xl, gap: 8 },
   emptyIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 4,
+    width: 64, height: 64, borderRadius: 32, backgroundColor: '#F3F4F6',
+    justifyContent: 'center', alignItems: 'center', marginBottom: 4,
   },
   emptyTitle: { fontSize: FONT_SIZE.sm, fontWeight: '700', color: COLORS.textMuted },
   emptySub: { fontSize: FONT_SIZE.xs, color: COLORS.textLight, textAlign: 'center', lineHeight: 18 },
   emptyText: { fontSize: FONT_SIZE.sm, color: COLORS.textMuted },
   emptyBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    marginTop: 4,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: COLORS.primary, borderRadius: RADIUS.md,
+    paddingHorizontal: 16, paddingVertical: 10, marginTop: 4,
   },
   emptyBtnText: { color: '#fff', fontSize: FONT_SIZE.sm, fontWeight: '700' },
 
-  // Vehicle chips
   vehicleChip: {
-    backgroundColor: '#fff',
-    borderRadius: RADIUS.lg,
-    padding: 14,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    width: 110,
+    backgroundColor: '#fff', borderRadius: RADIUS.lg, padding: 14, alignItems: 'center',
+    borderWidth: 1, borderColor: '#F1F5F9', width: 110,
     ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 6,
-      },
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6 },
       android: { elevation: 2 },
     }),
   },
   vehicleAddChip: { borderStyle: 'dashed', borderColor: '#D1D5DB' },
   vehicleChipIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.sm,
-    backgroundColor: '#EFF6FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
+    width: 44, height: 44, borderRadius: RADIUS.sm, backgroundColor: '#EFF6FF',
+    justifyContent: 'center', alignItems: 'center', marginBottom: 8,
   },
   vehicleChipName: { fontSize: 11, fontWeight: '700', color: COLORS.text, textAlign: 'center' },
   vehicleChipPlate: { fontSize: 10, color: COLORS.textMuted, marginTop: 2, textAlign: 'center' },
