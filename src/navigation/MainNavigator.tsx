@@ -1,4 +1,5 @@
 import React from 'react';
+import { View, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { DashboardScreen } from '../screens/dashboard/DashboardScreen';
@@ -12,37 +13,77 @@ import { COLORS } from '../constants';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
+// ── Custom Tab Bar Icon with 3D active indicator ──────────────
+const TabIcon = ({
+  name,
+  focused,
+  color,
+}: {
+  name: string;
+  focused: boolean;
+  color: string;
+}) => (
+  <View
+    style={{
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: 48,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: focused ? COLORS.primary + '15' : 'transparent',
+    }}
+  >
+    <Ionicons name={name as any} size={22} color={color} />
+  </View>
+);
+
 export const MainNavigator = () => {
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin';
+  const isAdjuster = user?.role === 'adjuster' || user?.role === 'admin';
+
+  const ICON_MAP: Record<string, { active: string; inactive: string }> = {
+    Dashboard: { active: 'home', inactive: 'home-outline' },
+    Claims: { active: 'document-text', inactive: 'document-text-outline' },
+    Vehicles: { active: 'car-sport', inactive: 'car-outline' },
+    Admin: { active: 'shield-checkmark', inactive: 'shield-outline' },
+    Profile: { active: 'person-circle', inactive: 'person-circle-outline' },
+  };
 
   return (
     <Tab.Navigator
-      screenOptions={({ route }: any) => ({
+      screenOptions={({ route }) => ({
         headerShown: false,
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textMuted,
         tabBarStyle: {
-          backgroundColor: COLORS.surface,
-          borderTopColor: COLORS.border,
-          paddingBottom: 8,
+          backgroundColor: '#fff',
+          borderTopWidth: 0,
+          height: Platform.OS === 'ios' ? 84 : 68,
+          paddingBottom: Platform.OS === 'ios' ? 24 : 8,
           paddingTop: 8,
-          height: 64,
+          // 3D tab bar shadow
+          ...Platform.select({
+            ios: {
+              shadowColor: '#1A56DB',
+              shadowOffset: { width: 0, height: -4 },
+              shadowOpacity: 0.08,
+              shadowRadius: 16,
+            },
+            android: { elevation: 16 },
+          }),
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '500' },
-        tabBarIcon: ({ color, size }: any) => {
-          // ✅ 'shield-account-outline' → 'shield-outline' (Ionicons-д байгаа нэр)
-          const icons: Record<string, string> = {
-            Dashboard: 'home-outline',
-            Claims: 'document-text-outline',
-            Vehicles: 'car-outline',
-            Admin: 'shield-outline',
-            Profile: 'person-outline',
-          };
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '600',
+          marginTop: 2,
+        },
+        tabBarIcon: ({ focused, color }) => {
+          const icons = ICON_MAP[route.name] ?? { active: 'ellipse', inactive: 'ellipse-outline' };
           return (
-            <Ionicons
-              name={icons[route.name] as any}
-              size={size}
+            <TabIcon
+              name={focused ? icons.active : icons.inactive}
+              focused={focused}
               color={color}
             />
           );
@@ -64,8 +105,6 @@ export const MainNavigator = () => {
         component={VehiclesScreen}
         options={{ title: 'Машинууд' }}
       />
-
-      {/* ✅ Admin tab — зөвхөн admin role-той хэрэглэгчид харагдана */}
       {isAdmin && (
         <Tab.Screen
           name="Admin"
@@ -73,7 +112,6 @@ export const MainNavigator = () => {
           options={{ title: 'Админ' }}
         />
       )}
-
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}

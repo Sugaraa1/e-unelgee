@@ -99,7 +99,7 @@ export const AdminDashboardScreen: React.FC = () => {
       setClaimsByStatus(Array.isArray(cbs) ? cbs : []);
       setClaimsByDay(Array.isArray(cbd) ? cbd : []);
       setTopDamage(Array.isArray(td) ? td : []);
-      setHighRisk(Array.isArray(hr) ? hr : []);
+      setHighRisk(Array.isArray(hr) ? hr : []); 
       setFraudAlerts(Array.isArray(fa) ? fa : []);
 
       if (!s && !qs && (!cbs || cbs.length === 0)) {
