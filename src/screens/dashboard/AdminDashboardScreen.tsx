@@ -51,7 +51,7 @@ const FraudCard: React.FC<{ alert: FraudAlert }> = ({ alert }) => (
         ]}
       />
     </View>
-    {alert.flags.length > 0 && (
+    {Array.isArray(alert.flags) && alert.flags.length > 0 && (
       <View style={styles.flagsContainer}>
         <Text style={styles.flagsTitle}>
           Сэжигтэй үзүүлэлт ({alert.flags.length}):
@@ -96,13 +96,13 @@ export const AdminDashboardScreen: React.FC = () => {
 
       setStats(s);
       setQuickStats(qs);
-      setClaimsByStatus(cbs);
-      setClaimsByDay(cbd);
-      setTopDamage(td);
-      setHighRisk(hr);
-      setFraudAlerts(fa);
+      setClaimsByStatus(Array.isArray(cbs) ? cbs : []);
+      setClaimsByDay(Array.isArray(cbd) ? cbd : []);
+      setTopDamage(Array.isArray(td) ? td : []);
+      setHighRisk(Array.isArray(hr) ? hr : []);
+      setFraudAlerts(Array.isArray(fa) ? fa : []);
 
-      if (!s && !qs && cbs.length === 0) {
+      if (!s && !qs && (!cbs || cbs.length === 0)) {
         setError('Admin эрх шаардлагатай. Admin role-той хэрэглэгчээр нэвтэрнэ үү.');
       }
     } catch (err) {
@@ -146,8 +146,14 @@ export const AdminDashboardScreen: React.FC = () => {
     );
   }
 
-  const highFraud = fraudAlerts.filter((a) => a.suspiciousLevel === 'high');
-  const medFraud  = fraudAlerts.filter((a) => a.suspiciousLevel === 'medium');
+  // ✅ Null-safe array operations
+  const safeFraudAlerts = Array.isArray(fraudAlerts) ? fraudAlerts : [];
+  const safeHighRisk    = Array.isArray(highRisk) ? highRisk : [];
+  const safeTopDamage   = Array.isArray(topDamage) ? topDamage : [];
+  const safeClaimsByStatus = Array.isArray(claimsByStatus) ? claimsByStatus : [];
+
+  const highFraud = safeFraudAlerts.filter((a) => a.suspiciousLevel === 'high');
+  const medFraud  = safeFraudAlerts.filter((a) => a.suspiciousLevel === 'medium');
 
   return (
     <ScrollView
@@ -228,16 +234,16 @@ export const AdminDashboardScreen: React.FC = () => {
       )}
 
       {/* ── Статусаар ────────────────────────────────────────── */}
-      {claimsByStatus.length > 0 && (
+      {safeClaimsByStatus.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>📋 Статусаар</Text>
           <View style={styles.card}>
-            {claimsByStatus.map((item, idx) => (
+            {safeClaimsByStatus.map((item, idx) => (
               <View
                 key={idx}
                 style={[
                   styles.listItem,
-                  idx === claimsByStatus.length - 1 && { borderBottomWidth: 0 },
+                  idx === safeClaimsByStatus.length - 1 && { borderBottomWidth: 0 },
                 ]}
               >
                 <View style={styles.listItemLeft}>
@@ -252,16 +258,16 @@ export const AdminDashboardScreen: React.FC = () => {
       )}
 
       {/* ── Гэмтлийн төрлүүд ─────────────────────────────────── */}
-      {topDamage.length > 0 && (
+      {safeTopDamage.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>🔧 Гэмтлийн төрлүүд</Text>
           <View style={styles.card}>
-            {topDamage.map((item, idx) => (
+            {safeTopDamage.map((item, idx) => (
               <View
                 key={idx}
                 style={[
                   styles.damageTypeItem,
-                  idx === topDamage.length - 1 && { borderBottomWidth: 0 },
+                  idx === safeTopDamage.length - 1 && { borderBottomWidth: 0 },
                 ]}
               >
                 <View style={styles.damageTypeLeft}>
@@ -286,10 +292,10 @@ export const AdminDashboardScreen: React.FC = () => {
       )}
 
       {/* ── Өндөр эрсдэлтэй claim ────────────────────────────── */}
-      {highRisk.length > 0 && (
+      {safeHighRisk.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>⚠️ Өндөр эрсдэлтэй claim</Text>
-          {highRisk.map((claim, idx) => (
+          {safeHighRisk.map((claim, idx) => (
             <View key={claim.id ?? idx} style={styles.highRiskCard}>
               <View style={styles.highRiskHeader}>
                 <Text style={styles.highRiskClaimNumber}>
@@ -306,10 +312,10 @@ export const AdminDashboardScreen: React.FC = () => {
       )}
 
       {/* ── Сэжигтэй claim-үүд ───────────────────────────────── */}
-      {fraudAlerts.length > 0 && (
+      {safeFraudAlerts.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>
-            🚨 Сэжигтэй claim-үүд ({fraudAlerts.length})
+            🚨 Сэжигтэй claim-үүд ({safeFraudAlerts.length})
           </Text>
           {highFraud.length > 0 && (
             <>
@@ -341,7 +347,7 @@ export const AdminDashboardScreen: React.FC = () => {
       )}
 
       {/* ── Хоосон ───────────────────────────────────────────── */}
-      {!stats && !quickStats && claimsByStatus.length === 0 && (
+      {!stats && !quickStats && safeClaimsByStatus.length === 0 && (
         <View style={styles.emptyBox}>
           <Text style={styles.emptyText}>Өгөгдөл байхгүй байна</Text>
           <Text style={styles.emptySubText}>
