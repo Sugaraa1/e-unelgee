@@ -91,56 +91,74 @@ export const EditProfileModal = ({ visible, user, onClose, onSave }: Props) => {
     if (!validate()) return;
     setSaving(true);
     try {
-      // PATCH /auth/me  — хэрэв endpoint байвал ашиглана
-      // Хэрэв backend-д профайл засах endpoint байхгүй бол local state шинэчилнэ
-      const updated: User = {
-        ...user,
+      const payload = {
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim(),
-        phoneNumber: form.phoneNumber.trim(),
+        phoneNumber: form.phoneNumber.trim() || undefined,
         insuranceProvider: form.insuranceProvider.trim() || undefined,
         insurancePolicyNumber: form.insurancePolicyNumber.trim() || undefined,
-      } as User;
+      };
 
-      try {
-        await apiClient.patch('/users/me', {
-          firstName: form.firstName.trim(),
-          lastName: form.lastName.trim(),
-          phoneNumber: form.phoneNumber.trim(),
-          insuranceProvider: form.insuranceProvider.trim() || undefined,
-          insurancePolicyNumber: form.insurancePolicyNumber.trim() || undefined,
-        });
-      } catch {
-        // Endpoint байхгүй бол local-д л хадгалах
-      }
+      const response = await apiClient.patch('/users/me', payload);
+      // Backend TransformInterceptor-оос { success, data, timestamp } буцаана
+      const updatedUser: User = response.data?.data ?? response.data;
 
-      onSave(updated);
+      onSave({ ...user, ...updatedUser });
       Alert.alert('Амжилттай', 'Профайл шинэчлэгдлээ');
       onClose();
     } catch (err: any) {
-      Alert.alert('Алдаа', err?.response?.data?.message ?? 'Хадгалахад алдаа гарлаа');
+      const msg =
+        err?.response?.data?.message ?? 'Профайл хадгалахад алдаа гарлаа';
+      const errorMsg = Array.isArray(msg) ? msg.join('\n') : msg;
+
+      // Утасны дугаар давхардсан үед
+      if (err?.response?.status === 409) {
+        setErrors({ phoneNumber: errorMsg });
+      } else {
+        Alert.alert('Алдаа', errorMsg);
+      }
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <SafeAreaView style={s.safe}>
+          {/* Header */}
           <View style={s.header}>
             <TouchableOpacity style={s.closeBtn} onPress={onClose}>
               <Ionicons name="close" size={22} color={COLORS.text} />
             </TouchableOpacity>
             <Text style={s.title}>Профайл засах</Text>
-            <TouchableOpacity style={s.saveBtn} onPress={handleSave} disabled={saving}>
-              {saving
-                ? <ActivityIndicator size="small" color={COLORS.primary} />
-                : <Text style={s.saveBtnText}>Хадгалах</Text>}
+            <TouchableOpacity
+              style={s.saveBtn}
+              onPress={handleSave}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              ) : (
+                <Text style={s.saveBtnText}>Хадгалах</Text>
+              )}
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={s.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <ScrollView
+            contentContainerStyle={s.body}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Avatar */}
             <View style={s.avatarSection}>
               <View style={s.avatar}>
                 <Text style={s.avatarText}>
@@ -150,30 +168,62 @@ export const EditProfileModal = ({ visible, user, onClose, onSave }: Props) => {
               <Text style={s.avatarHint}>Профайл зураг удахгүй нэмэгдэнэ</Text>
             </View>
 
+            {/* Хувийн мэдээлэл */}
             <View style={s.section}>
               <Text style={s.sectionTitle}>Хувийн мэдээлэл</Text>
               <View style={s.card}>
-                <Field label="Нэр" value={form.firstName} onChangeText={(t) => set('firstName', t)}
-                  placeholder="Бат" icon="person-outline" error={errors.firstName} />
+                <Field
+                  label="Нэр"
+                  value={form.firstName}
+                  onChangeText={(t) => set('firstName', t)}
+                  placeholder="Бат"
+                  icon="person-outline"
+                  error={errors.firstName}
+                />
                 <View style={s.divider} />
-                <Field label="Овог" value={form.lastName} onChangeText={(t) => set('lastName', t)}
-                  placeholder="Эрдэнэ" icon="person-outline" error={errors.lastName} />
+                <Field
+                  label="Овог"
+                  value={form.lastName}
+                  onChangeText={(t) => set('lastName', t)}
+                  placeholder="Эрдэнэ"
+                  icon="person-outline"
+                  error={errors.lastName}
+                />
                 <View style={s.divider} />
-                <Field label="Утасны дугаар" value={form.phoneNumber} onChangeText={(t) => set('phoneNumber', t)}
-                  placeholder="+97699001122" icon="call-outline" keyboardType="phone-pad" autoCapitalize="none" />
+                <Field
+                  label="Утасны дугаар"
+                  value={form.phoneNumber}
+                  onChangeText={(t) => set('phoneNumber', t)}
+                  placeholder="+97699001122"
+                  icon="call-outline"
+                  keyboardType="phone-pad"
+                  autoCapitalize="none"
+                  error={errors.phoneNumber}
+                />
               </View>
             </View>
 
+            {/* Даатгалын мэдээлэл */}
             <View style={s.section}>
               <Text style={s.sectionTitle}>Даатгалын мэдээлэл</Text>
               <View style={s.card}>
-                <Field label="Даатгалын компани" value={form.insuranceProvider}
+                <Field
+                  label="Даатгалын компани"
+                  value={form.insuranceProvider}
                   onChangeText={(t) => set('insuranceProvider', t)}
-                  placeholder="Монгол Даатгал" icon="shield-outline" autoCapitalize="none" />
+                  placeholder="Монгол Даатгал"
+                  icon="shield-outline"
+                  autoCapitalize="none"
+                />
                 <View style={s.divider} />
-                <Field label="Полисийн дугаар" value={form.insurancePolicyNumber}
+                <Field
+                  label="Полисийн дугаар"
+                  value={form.insurancePolicyNumber}
                   onChangeText={(t) => set('insurancePolicyNumber', t)}
-                  placeholder="МД-2025-001234" icon="card-outline" autoCapitalize="characters" />
+                  placeholder="МД-2025-001234"
+                  icon="card-outline"
+                  autoCapitalize="characters"
+                />
               </View>
             </View>
 
@@ -182,7 +232,12 @@ export const EditProfileModal = ({ visible, user, onClose, onSave }: Props) => {
               <Text style={s.sectionTitle}>Бүртгэлийн мэдээлэл</Text>
               <View style={s.card}>
                 <View style={s.readOnlyRow}>
-                  <Ionicons name="mail-outline" size={16} color={COLORS.textMuted} style={s.inputIcon} />
+                  <Ionicons
+                    name="mail-outline"
+                    size={16}
+                    color={COLORS.textMuted}
+                    style={s.inputIcon}
+                  />
                   <View style={{ flex: 1 }}>
                     <Text style={s.readOnlyLabel}>Имэйл хаяг</Text>
                     <Text style={s.readOnlyValue}>{user.email}</Text>
@@ -206,62 +261,110 @@ export const EditProfileModal = ({ visible, user, onClose, onSave }: Props) => {
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F8FAFC' },
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md,
-    backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
   },
   closeBtn: {
-    width: 36, height: 36, borderRadius: RADIUS.sm,
-    backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center',
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.sm,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   title: { fontSize: FONT_SIZE.lg, fontWeight: '700', color: COLORS.text },
-  saveBtn: { paddingHorizontal: SPACING.md, paddingVertical: 8, minWidth: 70, alignItems: 'center' },
-  saveBtnText: { fontSize: FONT_SIZE.sm, fontWeight: '700', color: COLORS.primary },
-
+  saveBtn: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 8,
+    minWidth: 70,
+    alignItems: 'center',
+  },
+  saveBtnText: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
   body: { padding: SPACING.lg, gap: SPACING.md },
-
   avatarSection: { alignItems: 'center', paddingVertical: SPACING.md, gap: 8 },
   avatar: {
-    width: 72, height: 72, borderRadius: 36,
-    backgroundColor: COLORS.primary + '20', justifyContent: 'center', alignItems: 'center',
-    borderWidth: 2, borderColor: COLORS.primary + '40',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: COLORS.primary + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.primary + '40',
   },
   avatarText: { fontSize: 26, fontWeight: '800', color: COLORS.primary },
   avatarHint: { fontSize: FONT_SIZE.xs, color: COLORS.textLight },
-
   section: { gap: 6 },
   sectionTitle: {
-    fontSize: FONT_SIZE.xs, fontWeight: '700', color: COLORS.textMuted,
-    textTransform: 'uppercase', letterSpacing: 0.5,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   card: {
-    backgroundColor: '#fff', borderRadius: RADIUS.lg,
-    borderWidth: 1, borderColor: '#F1F5F9', overflow: 'hidden',
+    backgroundColor: '#fff',
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    overflow: 'hidden',
   },
-
   field: { paddingHorizontal: SPACING.md, paddingVertical: 12, gap: 4 },
-  label: { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, fontWeight: '600' },
+  label: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textMuted,
+    fontWeight: '600',
+  },
   inputRow: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#F8FAFC', borderRadius: RADIUS.sm,
-    borderWidth: 1, borderColor: '#E5E7EB',
-    paddingHorizontal: SPACING.sm, height: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: SPACING.sm,
+    height: 44,
   },
   inputErr: { borderColor: COLORS.danger },
   inputIcon: { marginRight: SPACING.sm },
   input: { flex: 1, fontSize: FONT_SIZE.sm, color: COLORS.text },
   errText: { fontSize: FONT_SIZE.xs, color: COLORS.danger },
-  divider: { height: 1, backgroundColor: '#F8FAFC', marginHorizontal: SPACING.md },
-
+  divider: {
+    height: 1,
+    backgroundColor: '#F8FAFC',
+    marginHorizontal: SPACING.md,
+  },
   readOnlyRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: SPACING.md, paddingVertical: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
   },
   readOnlyLabel: { fontSize: FONT_SIZE.xs, color: COLORS.textMuted },
-  readOnlyValue: { fontSize: FONT_SIZE.sm, color: COLORS.text, fontWeight: '500', marginTop: 1 },
+  readOnlyValue: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.text,
+    fontWeight: '500',
+    marginTop: 1,
+  },
   lockedBadge: {
-    width: 24, height: 24, borderRadius: RADIUS.sm,
-    backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center',
+    width: 24,
+    height: 24,
+    borderRadius: RADIUS.sm,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   hint: { fontSize: FONT_SIZE.xs, color: COLORS.textLight, marginLeft: 4 },
 });
