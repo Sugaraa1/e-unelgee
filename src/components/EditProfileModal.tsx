@@ -22,9 +22,10 @@ interface Props {
   visible: boolean;
   user: User;
   onClose: () => void;
-  onSave: (updated: User) => void;
+  onSave: (updated: User) => void | Promise<void>;
 }
 
+// ✅ Field-г ГАДНА тодорхойлж keyboard хураагдахаас сэргийлнэ
 const Field = ({
   label,
   value,
@@ -74,6 +75,20 @@ export const EditProfileModal = ({ visible, user, onClose, onSave }: Props) => {
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // ✅ Модал дахин нээгдэх бүрт form-ыг user prop-оос synchronize хийх
+  React.useEffect(() => {
+    if (visible) {
+      setForm({
+        firstName: user.firstName ?? '',
+        lastName: user.lastName ?? '',
+        phoneNumber: user.phoneNumber ?? '',
+        insuranceProvider: user.insuranceProvider ?? '',
+        insurancePolicyNumber: user.insurancePolicyNumber ?? '',
+      });
+      setErrors({});
+    }
+  }, [visible, user]);
+
   const set = (key: string, val: string) => {
     setForm((f) => ({ ...f, [key]: val }));
     setErrors((e) => ({ ...e, [key]: '' }));
@@ -83,6 +98,9 @@ export const EditProfileModal = ({ visible, user, onClose, onSave }: Props) => {
     const e: Record<string, string> = {};
     if (!form.firstName.trim()) e.firstName = 'Нэр оруулна уу';
     if (!form.lastName.trim()) e.lastName = 'Овог оруулна уу';
+    if (form.phoneNumber && !/^\+?[1-9]\d{7,14}$/.test(form.phoneNumber.trim())) {
+      e.phoneNumber = 'Утасны дугаар буруу форматтай байна';
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -100,10 +118,33 @@ export const EditProfileModal = ({ visible, user, onClose, onSave }: Props) => {
       };
 
       const response = await apiClient.patch('/users/me', payload);
-      // Backend TransformInterceptor-оос { success, data, timestamp } буцаана
-      const updatedUser: User = response.data?.data ?? response.data;
 
-      onSave({ ...user, ...updatedUser });
+      // ✅ Backend TransformInterceptor буцаадаг: { success, data, timestamp }
+      // data бол backend-аас ирсэн шинэчилсэн user
+      const backendUser = response.data?.data ?? response.data;
+
+      // ✅ ЧУХАЛ: Backend-с ирсэн талбарыг одоогийн user-тай merge хийнэ.
+      // Ингэснээр email, role, id, createdAt гэх мэт backend нь буцаагаагүй
+      // талбарууд алга болохгүй.
+      const mergedUser: User = {
+        ...user,
+        ...backendUser,
+        // form-оос шинэчилсэн утгуудыг давуу эрхтэй ашиглана (safety net)
+        firstName: backendUser?.firstName ?? payload.firstName,
+        lastName: backendUser?.lastName ?? payload.lastName,
+        phoneNumber:
+          backendUser?.phoneNumber ?? payload.phoneNumber ?? user.phoneNumber,
+        insuranceProvider:
+          backendUser?.insuranceProvider ??
+          payload.insuranceProvider ??
+          user.insuranceProvider,
+        insurancePolicyNumber:
+          backendUser?.insurancePolicyNumber ??
+          payload.insurancePolicyNumber ??
+          user.insurancePolicyNumber,
+      };
+
+      await onSave(mergedUser);
       Alert.alert('Амжилттай', 'Профайл шинэчлэгдлээ');
       onClose();
     } catch (err: any) {
@@ -111,7 +152,6 @@ export const EditProfileModal = ({ visible, user, onClose, onSave }: Props) => {
         err?.response?.data?.message ?? 'Профайл хадгалахад алдаа гарлаа';
       const errorMsg = Array.isArray(msg) ? msg.join('\n') : msg;
 
-      // Утасны дугаар давхардсан үед
       if (err?.response?.status === 409) {
         setErrors({ phoneNumber: errorMsg });
       } else {

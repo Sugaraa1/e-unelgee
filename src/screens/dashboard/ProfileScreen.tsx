@@ -89,8 +89,9 @@ export const ProfileScreen = () => {
     ]);
   };
 
-  const handleUserSaved = (updated: User) => {
-    setUser(updated);
+  // ✅ setUser одоо async болсон тул await хийнэ
+  const handleUserSaved = async (updated: User) => {
+    await setUser(updated);
   };
 
   const initials = `${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? ''}`.toUpperCase();
@@ -246,7 +247,6 @@ export const ProfileScreen = () => {
           </View>
         </View>
 
-        {/* ── App version ──────────────────────────────── */}
         <Text style={cs.version}>v1.0.0 · Accident Assessment App</Text>
         <View style={{ height: SPACING.xl }} />
       </ScrollView>

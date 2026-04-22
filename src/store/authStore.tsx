@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
+import * as SecureStore from 'expo-secure-store';
 import type { User } from '../types';
 import * as authService from '../services/authService';
+import { STORAGE_KEYS } from '../constants';
 
 interface AuthStore {
   user: User | null;
@@ -10,10 +12,9 @@ interface AuthStore {
   register: (payload: authService.RegisterPayload) => Promise<void>;
   logout: () => Promise<void>;
   loadStoredAuth: () => Promise<void>;
-  setUser: (user: User) => void;
+  setUser: (user: User) => Promise<void>;
 }
 
-// ✅ Default утгуудыг зөв boolean-оор тодорхойлсон
 const AuthContext = createContext<AuthStore>({
   user: null,
   isAuthenticated: false,
@@ -22,29 +23,29 @@ const AuthContext = createContext<AuthStore>({
   register: async () => {},
   logout: async () => {},
   loadStoredAuth: async () => {},
-  setUser: () => {},
+  setUser: async () => {},
 });
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUserState] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const login = async (email: string, password: string): Promise<void> => {
     const result = await authService.login({ email, password });
-    setUser(result.user);
+    setUserState(result.user);
     setIsAuthenticated(true);
   };
 
   const register = async (payload: authService.RegisterPayload): Promise<void> => {
     const result = await authService.register(payload);
-    setUser(result.user);
+    setUserState(result.user);
     setIsAuthenticated(true);
   };
 
   const logout = async (): Promise<void> => {
     await authService.logout();
-    setUser(null);
+    setUserState(null);
     setIsAuthenticated(false);
   };
 
@@ -53,17 +54,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const storedUser = await authService.getStoredUser();
       const token = await authService.getStoredToken();
       if (storedUser !== null && token !== null) {
-        setUser(storedUser);
+        setUserState(storedUser);
         setIsAuthenticated(true);
       } else {
-        setUser(null);
+        setUserState(null);
         setIsAuthenticated(false);
       }
     } catch {
-      setUser(null);
+      setUserState(null);
       setIsAuthenticated(false);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // ✅ setUser — state + SecureStore-ийг аль алинд нь хадгална
+  // Ингэснээр app restart хийсэн ч шинэчилсэн өгөгдөл хадгалагдана
+  const setUser = async (updatedUser: User): Promise<void> => {
+    setUserState(updatedUser);
+    try {
+      await SecureStore.setItemAsync(
+        STORAGE_KEYS.USER,
+        JSON.stringify(updatedUser),
+      );
+    } catch (err) {
+      console.warn('[authStore] SecureStore save failed:', err);
     }
   };
 
