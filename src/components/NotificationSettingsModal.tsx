@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,9 +9,10 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
-  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
 import { COLORS, SPACING, FONT_SIZE, RADIUS } from '../../src/constants';
 
 interface Props {
@@ -29,63 +30,101 @@ interface NotifSetting {
   value: boolean;
 }
 
+const STORAGE_KEY = 'notification_settings';
+
+const DEFAULT_SETTINGS: NotifSetting[] = [
+  {
+    key: 'claim_status',
+    label: 'Claim статус өөрчлөлт',
+    desc: 'Claim зөвшөөрөгдсөн, татгалзагдсан үед',
+    icon: 'document-text',
+    iconColor: '#1A56DB',
+    iconBg: '#EFF6FF',
+    value: true,
+  },
+  {
+    key: 'ai_result',
+    label: 'AI шинжилгээний дүн',
+    desc: 'Зургийн AI шинжилгээ дуусмагц',
+    icon: 'sparkles',
+    iconColor: '#7C3AED',
+    iconBg: '#F5F3FF',
+    value: true,
+  },
+  {
+    key: 'review_needed',
+    label: 'Шалгалт шаардлагатай',
+    desc: 'Гараар шалгалт хийх шаардлагатай болсон үед',
+    icon: 'warning',
+    iconColor: '#FF8A00',
+    iconBg: '#FFF8EE',
+    value: true,
+  },
+  {
+    key: 'approval',
+    label: 'Зөвшөөрлийн мэдэгдэл',
+    desc: 'Claim зөвшөөрөгдсөн үед мэдэгдэл авах',
+    icon: 'checkmark-circle',
+    iconColor: '#0E9F6E',
+    iconBg: '#ECFDF5',
+    value: true,
+  },
+  {
+    key: 'rejection',
+    label: 'Татгалзлын мэдэгдэл',
+    desc: 'Claim татгалзагдсан үед мэдэгдэл авах',
+    icon: 'close-circle',
+    iconColor: '#E02424',
+    iconBg: '#FEF2F2',
+    value: true,
+  },
+  {
+    key: 'promotions',
+    label: 'Мэдээлэл & Зөвлөмж',
+    desc: 'Системийн шинэчлэл болон зөвлөмжүүд',
+    icon: 'information-circle',
+    iconColor: '#6B7280',
+    iconBg: '#F9FAFB',
+    value: false,
+  },
+];
+
 export const NotificationSettingsModal = ({ visible, onClose }: Props) => {
-  const [settings, setSettings] = useState<NotifSetting[]>([
-    {
-      key: 'claim_status',
-      label: 'Claim статус өөрчлөлт',
-      desc: 'Claim зөвшөөрөгдсөн, татгалзагдсан үед',
-      icon: 'document-text',
-      iconColor: '#1A56DB',
-      iconBg: '#EFF6FF',
-      value: true,
-    },
-    {
-      key: 'ai_result',
-      label: 'AI шинжилгээний дүн',
-      desc: 'Зургийн AI шинжилгээ дуусмагц',
-      icon: 'sparkles',
-      iconColor: '#7C3AED',
-      iconBg: '#F5F3FF',
-      value: true,
-    },
-    {
-      key: 'review_needed',
-      label: 'Шалгалт шаардлагатай',
-      desc: 'Гараар шалгалт хийх шаардлагатай болсон үед',
-      icon: 'warning',
-      iconColor: '#FF8A00',
-      iconBg: '#FFF8EE',
-      value: true,
-    },
-    {
-      key: 'approval',
-      label: 'Зөвшөөрлийн мэдэгдэл',
-      desc: 'Claim зөвшөөрөгдсөн үед мэдэгдэл авах',
-      icon: 'checkmark-circle',
-      iconColor: '#0E9F6E',
-      iconBg: '#ECFDF5',
-      value: true,
-    },
-    {
-      key: 'rejection',
-      label: 'Татгалзлын мэдэгдэл',
-      desc: 'Claim татгалзагдсан үед мэдэгдэл авах',
-      icon: 'close-circle',
-      iconColor: '#E02424',
-      iconBg: '#FEF2F2',
-      value: true,
-    },
-    {
-      key: 'promotions',
-      label: 'Мэдээлэл & Зөвлөмж',
-      desc: 'Системийн шинэчлэл болон зөвлөмжүүд',
-      icon: 'information-circle',
-      iconColor: '#6B7280',
-      iconBg: '#F9FAFB',
-      value: false,
-    },
-  ]);
+  const [settings, setSettings] = useState<NotifSetting[]>(DEFAULT_SETTINGS);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // Modal нээгдэх бүрт хадгалагдсан тохиргоог ачаалах
+  useEffect(() => {
+    if (visible) {
+      loadSettings();
+    }
+  }, [visible]);
+
+  const loadSettings = async () => {
+    setLoading(true);
+    try {
+      const stored = await SecureStore.getItemAsync(STORAGE_KEY);
+      if (stored) {
+        const savedValues: Record<string, boolean> = JSON.parse(stored);
+        // Default тохиргоог хадгалагдсан утгуудаар шинэчлэх
+        setSettings(
+          DEFAULT_SETTINGS.map((s) => ({
+            ...s,
+            value: s.key in savedValues ? savedValues[s.key] : s.value,
+          })),
+        );
+      } else {
+        // Хадгалагдсан өгөгдөл байхгүй бол default ашиглах
+        setSettings(DEFAULT_SETTINGS);
+      }
+    } catch (err) {
+      console.warn('[NotifSettings] load error:', err);
+      setSettings(DEFAULT_SETTINGS);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const toggle = (key: string) => {
     setSettings((prev) =>
@@ -94,90 +133,140 @@ export const NotificationSettingsModal = ({ visible, onClose }: Props) => {
   };
 
   const allOn = settings.every((s) => s.value);
+
   const toggleAll = () => {
     const newVal = !allOn;
     setSettings((prev) => prev.map((s) => ({ ...s, value: newVal })));
   };
 
-  const handleSave = () => {
-    // In a real app, save to SecureStore or backend
-    Alert.alert('Хадгалагдлаа', 'Мэдэгдлийн тохиргоо хадгалагдлаа', [
-      { text: 'OK', onPress: onClose },
-    ]);
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      // Зөвхөн key-value pair хадгалах (icon, color гэх мэт мета өгөгдөл хэрэггүй)
+      const valuesToSave: Record<string, boolean> = {};
+      settings.forEach((s) => {
+        valuesToSave[s.key] = s.value;
+      });
+      await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(valuesToSave));
+      Alert.alert('Амжилттай', 'Мэдэгдлийн тохиргоо хадгалагдлаа', [
+        { text: 'OK', onPress: onClose },
+      ]);
+    } catch (err) {
+      console.error('[NotifSettings] save error:', err);
+      Alert.alert('Алдаа', 'Тохиргоо хадгалахад алдаа гарлаа. Дахин оролдоно уу.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
       <SafeAreaView style={s.safe}>
+        {/* Header */}
         <View style={s.header}>
           <TouchableOpacity style={s.closeBtn} onPress={onClose}>
             <Ionicons name="close" size={22} color={COLORS.text} />
           </TouchableOpacity>
           <Text style={s.title}>Мэдэгдлийн тохиргоо</Text>
-          <TouchableOpacity style={s.saveBtn} onPress={handleSave}>
-            <Text style={s.saveBtnText}>Хадгалах</Text>
+          <TouchableOpacity
+            style={s.saveBtn}
+            onPress={handleSave}
+            disabled={saving || loading}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color={COLORS.primary} />
+            ) : (
+              <Text style={s.saveBtnText}>Хадгалах</Text>
+            )}
           </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
-          {/* Master toggle */}
-          <View style={s.masterCard}>
-            <View style={s.masterLeft}>
-              <View style={s.bellWrap}>
-                <Ionicons
-                  name={allOn ? 'notifications' : 'notifications-off'}
-                  size={24}
-                  color={allOn ? COLORS.primary : COLORS.textMuted}
-                />
-              </View>
-              <View>
-                <Text style={s.masterLabel}>Бүх мэдэгдэл</Text>
-                <Text style={s.masterDesc}>
-                  {allOn ? 'Идэвхжсэн' : 'Унтраасан'}
-                </Text>
-              </View>
-            </View>
-            <Switch
-              value={allOn}
-              onValueChange={toggleAll}
-              trackColor={{ false: '#D1D5DB', true: COLORS.primary + '80' }}
-              thumbColor={allOn ? COLORS.primary : '#F3F4F6'}
-              ios_backgroundColor="#D1D5DB"
-            />
+        {loading ? (
+          <View style={s.loadingBox}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={s.loadingText}>Тохиргоо ачааллаж байна...</Text>
           </View>
-
-          <Text style={s.groupTitle}>Дэлгэрэнгүй тохиргоо</Text>
-
-          <View style={s.card}>
-            {settings.map((setting, i) => (
-              <View key={setting.key}>
-                <View style={s.row}>
-                  <View style={[s.iconWrap, { backgroundColor: setting.iconBg }]}>
-                    <Ionicons name={setting.icon as any} size={18} color={setting.iconColor} />
-                  </View>
-                  <View style={s.rowContent}>
-                    <Text style={s.rowLabel}>{setting.label}</Text>
-                    <Text style={s.rowDesc}>{setting.desc}</Text>
-                  </View>
-                  <Switch
-                    value={setting.value}
-                    onValueChange={() => toggle(setting.key)}
-                    trackColor={{ false: '#D1D5DB', true: setting.iconColor + '80' }}
-                    thumbColor={setting.value ? setting.iconColor : '#F3F4F6'}
-                    ios_backgroundColor="#D1D5DB"
+        ) : (
+          <ScrollView
+            contentContainerStyle={s.body}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Master toggle */}
+            <View style={s.masterCard}>
+              <View style={s.masterLeft}>
+                <View style={s.bellWrap}>
+                  <Ionicons
+                    name={allOn ? 'notifications' : 'notifications-off'}
+                    size={24}
+                    color={allOn ? COLORS.primary : COLORS.textMuted}
                   />
                 </View>
-                {i < settings.length - 1 && <View style={s.divider} />}
+                <View>
+                  <Text style={s.masterLabel}>Бүх мэдэгдэл</Text>
+                  <Text style={s.masterDesc}>
+                    {allOn ? 'Бүгд идэвхжсэн' : 'Зарим нь унтраасан'}
+                  </Text>
+                </View>
               </View>
-            ))}
-          </View>
+              <Switch
+                value={allOn}
+                onValueChange={toggleAll}
+                trackColor={{ false: '#D1D5DB', true: COLORS.primary + '80' }}
+                thumbColor={allOn ? COLORS.primary : '#F3F4F6'}
+                ios_backgroundColor="#D1D5DB"
+              />
+            </View>
 
-          <Text style={s.note}>
-            Push мэдэгдэл авахын тулд төхөөрөмжийн тохиргооноос зөвшөөрөл өгсөн байх шаардлагатай.
-          </Text>
+            <Text style={s.groupTitle}>Дэлгэрэнгүй тохиргоо</Text>
 
-          <View style={{ height: SPACING.xl }} />
-        </ScrollView>
+            <View style={s.card}>
+              {settings.map((setting, i) => (
+                <View key={setting.key}>
+                  <View style={s.row}>
+                    <View
+                      style={[s.iconWrap, { backgroundColor: setting.iconBg }]}
+                    >
+                      <Ionicons
+                        name={setting.icon as any}
+                        size={18}
+                        color={setting.iconColor}
+                      />
+                    </View>
+                    <View style={s.rowContent}>
+                      <Text style={s.rowLabel}>{setting.label}</Text>
+                      <Text style={s.rowDesc}>{setting.desc}</Text>
+                    </View>
+                    <Switch
+                      value={setting.value}
+                      onValueChange={() => toggle(setting.key)}
+                      trackColor={{
+                        false: '#D1D5DB',
+                        true: setting.iconColor + '80',
+                      }}
+                      thumbColor={
+                        setting.value ? setting.iconColor : '#F3F4F6'
+                      }
+                      ios_backgroundColor="#D1D5DB"
+                    />
+                  </View>
+                  {i < settings.length - 1 && <View style={s.divider} />}
+                </View>
+              ))}
+            </View>
+
+            <Text style={s.note}>
+              Push мэдэгдэл авахын тулд төхөөрөмжийн тохиргооноос зөвшөөрөл
+              өгсөн байх шаардлагатай.
+            </Text>
+
+            <View style={{ height: SPACING.xl }} />
+          </ScrollView>
+        )}
       </SafeAreaView>
     </Modal>
   );
@@ -186,58 +275,129 @@ export const NotificationSettingsModal = ({ visible, onClose }: Props) => {
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F8FAFC' },
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md,
-    backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
   },
   closeBtn: {
-    width: 36, height: 36, borderRadius: RADIUS.sm,
-    backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center',
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.sm,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   title: { fontSize: FONT_SIZE.lg, fontWeight: '700', color: COLORS.text },
-  saveBtn: { paddingHorizontal: SPACING.md, paddingVertical: 8, minWidth: 70, alignItems: 'center' },
-  saveBtnText: { fontSize: FONT_SIZE.sm, fontWeight: '700', color: COLORS.primary },
+  saveBtn: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 8,
+    minWidth: 70,
+    alignItems: 'center',
+  },
+  saveBtnText: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+
+  loadingBox: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  loadingText: { fontSize: FONT_SIZE.sm, color: COLORS.textMuted },
 
   body: { padding: SPACING.lg, gap: SPACING.md },
 
   masterCard: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#fff', borderRadius: RADIUS.lg, padding: SPACING.md,
-    borderWidth: 2, borderColor: COLORS.primary + '30',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    borderWidth: 2,
+    borderColor: COLORS.primary + '30',
   },
   masterLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   bellWrap: {
-    width: 44, height: 44, borderRadius: RADIUS.md,
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
     backgroundColor: COLORS.primary + '12',
-    justifyContent: 'center', alignItems: 'center',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  masterLabel: { fontSize: FONT_SIZE.md, fontWeight: '700', color: COLORS.text },
-  masterDesc: { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, marginTop: 2 },
+  masterLabel: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  masterDesc: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
 
   groupTitle: {
-    fontSize: FONT_SIZE.xs, fontWeight: '700', color: COLORS.textMuted,
-    textTransform: 'uppercase', letterSpacing: 0.5,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 
   card: {
-    backgroundColor: '#fff', borderRadius: RADIUS.lg,
-    borderWidth: 1, borderColor: '#F1F5F9', overflow: 'hidden',
+    backgroundColor: '#fff',
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    overflow: 'hidden',
   },
   row: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: SPACING.md, paddingVertical: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 13,
   },
   iconWrap: {
-    width: 38, height: 38, borderRadius: RADIUS.sm,
-    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
   },
   rowContent: { flex: 1 },
-  rowLabel: { fontSize: FONT_SIZE.sm, fontWeight: '600', color: COLORS.text },
-  rowDesc: { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, marginTop: 2, lineHeight: 16 },
-  divider: { height: 1, backgroundColor: '#F8FAFC', marginHorizontal: SPACING.md },
+  rowLabel: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  rowDesc: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textMuted,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#F8FAFC',
+    marginHorizontal: SPACING.md,
+  },
 
   note: {
-    fontSize: FONT_SIZE.xs, color: COLORS.textLight,
-    lineHeight: 18, textAlign: 'center', paddingHorizontal: SPACING.md,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textLight,
+    lineHeight: 18,
+    textAlign: 'center',
+    paddingHorizontal: SPACING.md,
   },
 });
