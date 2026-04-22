@@ -31,8 +31,21 @@ export const register = async (payload: RegisterPayload): Promise<AuthResult> =>
     ENDPOINTS.AUTH.REGISTER,
     payload,
   );
-  await saveAuthData(data.data);
-  return data.data;
+ 
+  const result = data.data;
+ 
+  await Promise.all([
+    SecureStore.setItemAsync(STORAGE_KEYS.ACCESS_TOKEN, result.accessToken),
+    SecureStore.setItemAsync(STORAGE_KEYS.REFRESH_TOKEN, result.refreshToken),
+  ]);
+
+  try {
+    const { data: meData } = await apiClient.get<ApiResponse<User>>(ENDPOINTS.AUTH.ME);
+    result.user = meData.data;
+  } catch {}
+
+  await SecureStore.setItemAsync(STORAGE_KEYS.USER, JSON.stringify(result.user));
+  return result;
 };
 
 // ── Login ─────────────────────────────────────────────────────
@@ -41,8 +54,25 @@ export const login = async (payload: LoginPayload): Promise<AuthResult> => {
     ENDPOINTS.AUTH.LOGIN,
     payload,
   );
-  await saveAuthData(data.data);
-  return data.data;
+ 
+  const result = data.data;
+ 
+  // ✅ Эхлээд token-ийг хадгалж, дараа бүтэн user-г fetch хийнэ
+  await Promise.all([
+    SecureStore.setItemAsync(STORAGE_KEYS.ACCESS_TOKEN, result.accessToken),
+    SecureStore.setItemAsync(STORAGE_KEYS.REFRESH_TOKEN, result.refreshToken),
+  ]);
+
+  // ✅ Token хадгалсны дараа бүтэн profile татна
+  try {
+    const { data: meData } = await apiClient.get<ApiResponse<User>>(ENDPOINTS.AUTH.ME);
+    result.user = meData.data;
+  } catch {
+    // fallback: login response-ийн user ашиглана
+  }
+
+  await SecureStore.setItemAsync(STORAGE_KEYS.USER, JSON.stringify(result.user));
+  return result;
 };
 
 // ── Logout ────────────────────────────────────────────────────
