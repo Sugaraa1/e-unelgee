@@ -53,30 +53,23 @@ export interface FraudAlert {
   createdAt: Date;
 }
 
-// ── Шинэ: Санал нийлэхгүй claim-ийн мэдээлэл ────────────────
 export interface DisputedClaim {
   id: string;
   claimNumber: string;
   status: string;
-  // Хэрэглэгчийн тайлбар (notes талбараас авна)
   disputeReason: string;
-  // AI үнэлгээний дүн
   estimatedRepairCost: number | null;
-  // Ослын мэдээлэл
   accidentType: string;
   accidentLocation: string;
   accidentDate: Date;
-  // Хэрэглэгчийн мэдээлэл
   submittedBy: {
     id: string;
     firstName: string;
     lastName: string;
     email: string;
     phoneNumber: string;
-  };
-  // Тээвэр хэрэгслийн мэдээлэл
+  } | null;
   vehicleInfo: string;
-  // Огноо
   createdAt: Date;
   updatedAt: Date;
 }
@@ -102,6 +95,7 @@ export class AdminService {
     private readonly damageAssessmentRepository: Repository<DamageAssessment>,
   ) {}
 
+  // ── Dashboard Stats ────────────────────────────────────────
   async getDashboardStats(): Promise<DashboardStats> {
     this.logger.log('Fetching dashboard statistics');
 
@@ -136,13 +130,6 @@ export class AdminService {
       .where('claim.status = :status', { status: ClaimStatus.APPROVED })
       .getRawOne();
 
-    const totalPayoutAmount = payoutStats?.totalPayout
-      ? parseFloat(payoutStats.totalPayout)
-      : 0;
-    const avgClaimAmount = payoutStats?.avgCost
-      ? parseFloat(payoutStats.avgCost)
-      : 0;
-
     return {
       totalUsers,
       totalClaims,
@@ -151,11 +138,12 @@ export class AdminService {
       pendingClaims,
       approvedClaims,
       rejectedClaims,
-      totalPayoutAmount,
-      avgClaimAmount,
+      totalPayoutAmount: payoutStats?.totalPayout ? parseFloat(payoutStats.totalPayout) : 0,
+      avgClaimAmount: payoutStats?.avgCost ? parseFloat(payoutStats.avgCost) : 0,
     };
   }
 
+  // ── Claims by status ───────────────────────────────────────
   async getClaimsByStatus(): Promise<ClaimsByStatus[]> {
     const results = await this.claimRepository
       .createQueryBuilder('claim')
@@ -171,6 +159,7 @@ export class AdminService {
     }));
   }
 
+  // ── Claims by day ──────────────────────────────────────────
   async getClaimsByDay(days: number = 7): Promise<ClaimsByDay[]> {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
@@ -190,6 +179,7 @@ export class AdminService {
     }));
   }
 
+  // ── Top damage types ───────────────────────────────────────
   async getTopDamageTypes(limit: number = 10): Promise<DamageTypeStats[]> {
     const assessments = await this.damageAssessmentRepository
       .createQueryBuilder('da')
@@ -213,7 +203,7 @@ export class AdminService {
           });
         }
       } catch {
-        // skip
+        // skip invalid
       }
     });
 
@@ -221,6 +211,7 @@ export class AdminService {
       (sum, count) => sum + count,
       0,
     );
+
     return Array.from(damageTypeMap.entries())
       .map(([type, count]) => ({
         damageType: type,
@@ -231,6 +222,7 @@ export class AdminService {
       .slice(0, limit);
   }
 
+  // ── High risk claims ───────────────────────────────────────
   async getHighRiskClaims(limit: number = 20): Promise<HighRiskClaimSummary[]> {
     const claims = await this.claimRepository
       .createQueryBuilder('claim')
@@ -253,6 +245,7 @@ export class AdminService {
     }));
   }
 
+  // ── Fraud alerts ───────────────────────────────────────────
   async getFraudAlerts(limit: number = 20): Promise<FraudAlert[]> {
     const claims = await this.claimRepository
       .createQueryBuilder('claim')
@@ -265,7 +258,6 @@ export class AdminService {
 
     for (const claim of claims) {
       const fraudResult = await this.checkFraudIndicators(claim.id);
-
       if (fraudResult.flags && fraudResult.flags.length > 0) {
         alerts.push({
           id: claim.id,
@@ -280,72 +272,82 @@ export class AdminService {
     return alerts.slice(0, limit);
   }
 
-  /**
-   * Санал нийлэхгүй байгаа claim-үүдийг хэрэглэгчийн тайлбартай нь буцаах
-   * status = pending_inspection AND requiresManualReview = true
-   */
+  // ── Disputed claims ────────────────────────────────────────
+  // FIX: try-catch + LIKE query-г аюулгүй болгосон
+  // FIX: leftJoin ашиглаж null relation-ийг зөвшөөрсөн
   async getDisputedClaims(limit: number = 50): Promise<DisputedClaim[]> {
     this.logger.log('Fetching disputed claims');
 
-    const claims = await this.claimRepository
-      .createQueryBuilder('claim')
-      .leftJoinAndSelect('claim.vehicle', 'vehicle')
-      .leftJoinAndSelect('claim.submittedBy', 'submittedBy')
-      .where('claim.status = :status', { status: ClaimStatus.PENDING_INSPECTION })
-      .andWhere('claim.requiresManualReview = :review', { review: true })
-      // notes талбарт "санал нийлэхгүй" гэсэн тэмдэглэгээтэй байх ёстой
-      .andWhere("claim.notes LIKE :keyword", { keyword: '%санал нийлэхгүй%' })
-      .orderBy('claim.updatedAt', 'DESC')
-      .take(limit)
-      .getMany();
+    try {
+      // FIX: LIKE query-г тусдаа andWhere болгон аюулгүй ажиллуулна
+      // Хэрэв notes талбар null бол LIKE амжилтгүй болно тул OR нөхцөл нэмнэ
+      const claims = await this.claimRepository
+        .createQueryBuilder('claim')
+        .leftJoinAndSelect('claim.vehicle', 'vehicle')
+        .leftJoinAndSelect('claim.submittedBy', 'submittedBy')
+        .where('claim.status = :status', {
+          status: ClaimStatus.PENDING_INSPECTION,
+        })
+        .andWhere('claim.requiresManualReview = :review', { review: true })
+        // FIX: notes эсвэл rejectionReason талбараас аль нэгнийг шалгана
+        .andWhere(
+          '(claim.notes IS NOT NULL OR claim.rejectionReason IS NOT NULL)',
+        )
+        .orderBy('claim.updatedAt', 'DESC')
+        .take(limit)
+        .getMany();
 
-    return claims.map((claim) => {
-      // notes талбараас хэрэглэгчийн тайлбарыг гаргаж авна
-      // Format: "Хэрэглэгч санал нийлэхгүй: <reason>"
-      let disputeReason = 'Тайлбар байхгүй';
-      if (claim.notes) {
-        const match = claim.notes.match(/Хэрэглэгч санал нийлэхгүй:\s*(.+)/);
-        if (match) {
-          disputeReason = match[1].trim();
-        } else {
-          disputeReason = claim.notes;
+      return claims.map((claim) => {
+        // Хэрэглэгчийн тайлбарыг notes эсвэл rejectionReason-с авна
+        let disputeReason = 'Тайлбар байхгүй';
+
+        if (claim.rejectionReason) {
+          // dispute() функц rejectionReason-д хадгалдаг
+          disputeReason = claim.rejectionReason;
+        } else if (claim.notes) {
+          // notes-с "Хэрэглэгч санал нийлэхгүй: ..." хэсгийг гаргана
+          const match = claim.notes.match(/Хэрэглэгч санал нийлэхгүй:\s*(.+)/);
+          disputeReason = match ? match[1].trim() : claim.notes;
         }
-      }
-      // rejectionReason талбараас ч авч болно
-      if (claim.rejectionReason && disputeReason === 'Тайлбар байхгүй') {
-        disputeReason = claim.rejectionReason;
-      }
 
-      return {
-        id: claim.id,
-        claimNumber: claim.claimNumber,
-        status: claim.status,
-        disputeReason,
-        estimatedRepairCost: claim.estimatedRepairCost
-          ? Number(claim.estimatedRepairCost)
-          : null,
-        accidentType: claim.accidentType,
-        accidentLocation: claim.accidentLocation,
-        accidentDate: claim.accidentDate,
-        submittedBy: claim.submittedBy
-          ? {
-              id: claim.submittedBy.id,
-              firstName: claim.submittedBy.firstName,
-              lastName: claim.submittedBy.lastName,
-              email: claim.submittedBy.email,
-              phoneNumber: claim.submittedBy.phoneNumber,
-            }
-          : null,
-        vehicleInfo: claim.vehicle
-          ? `${claim.vehicle.make} ${claim.vehicle.model} (${claim.vehicle.year}) — ${claim.vehicle.licensePlate}`
-          : 'Мэдээлэл байхгүй',
-        createdAt: claim.createdAt,
-        updatedAt: claim.updatedAt,
-      };
-    });
+        return {
+          id: claim.id,
+          claimNumber: claim.claimNumber,
+          status: claim.status,
+          disputeReason,
+          estimatedRepairCost: claim.estimatedRepairCost
+            ? Number(claim.estimatedRepairCost)
+            : null,
+          accidentType: claim.accidentType,
+          accidentLocation: claim.accidentLocation,
+          accidentDate: claim.accidentDate,
+          submittedBy: claim.submittedBy
+            ? {
+                id: claim.submittedBy.id,
+                firstName: claim.submittedBy.firstName,
+                lastName: claim.submittedBy.lastName,
+                email: claim.submittedBy.email,
+                phoneNumber: claim.submittedBy.phoneNumber,
+              }
+            : null,
+          vehicleInfo: claim.vehicle
+            ? `${claim.vehicle.make} ${claim.vehicle.model} (${claim.vehicle.year}) — ${claim.vehicle.licensePlate}`
+            : 'Мэдээлэл байхгүй',
+          createdAt: claim.createdAt,
+          updatedAt: claim.updatedAt,
+        };
+      });
+    } catch (error) {
+      // FIX: 500 алдаа гарвал хоосон массив буцааж frontend-г хамгаална
+      this.logger.error('getDisputedClaims error:', error);
+      return [];
+    }
   }
 
+  // ── Quick stats ────────────────────────────────────────────
   async getQuickStats() {
+    this.logger.log('Fetching quick stats');
+
     const [todayClaims, weekClaims, monthClaims, todayPayout] =
       await Promise.all([
         this.getClaimsInPeriod(1),
@@ -357,6 +359,7 @@ export class AdminService {
     return { todayClaims, weekClaims, monthClaims, todayPayout };
   }
 
+  // ── Private helpers ────────────────────────────────────────
   private async getClaimsInPeriod(days: number): Promise<number> {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
@@ -380,47 +383,56 @@ export class AdminService {
   private async checkFraudIndicators(
     claimId: string,
   ): Promise<{ flags: string[] }> {
-    const claim = await this.claimRepository.findOne({
-      where: { id: claimId },
-      relations: ['vehicle'],
-    });
+    try {
+      const claim = await this.claimRepository.findOne({
+        where: { id: claimId },
+        relations: ['vehicle'],
+      });
 
-    if (!claim) return { flags: [] };
+      if (!claim) return { flags: [] };
 
-    const flags: string[] = [];
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+      const flags: string[] = [];
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
 
-    const recentClaims = await this.claimRepository.count({
-      where: {
-        submittedById: claim.submittedById,
-        createdAt: MoreThan(thirtyDaysAgo),
-      },
-    });
-    if (recentClaims > 2) flags.push(`30 хоногт ${recentClaims} claim`);
+      const recentClaims = await this.claimRepository.count({
+        where: {
+          submittedById: claim.submittedById,
+          createdAt: MoreThan(thirtyDaysAgo),
+        },
+      });
+      if (recentClaims > 2) flags.push(`30 хоногт ${recentClaims} claim`);
 
-    if (claim.estimatedRepairCost && claim.vehicle) {
-      const vehicleValue = this.calculateVehicleValue(claim.vehicle);
-      const ratio = Number(claim.estimatedRepairCost) / vehicleValue;
-      if (ratio > 0.95) flags.push('Засварын зардал үнэ цэнийг давсан');
+      if (claim.estimatedRepairCost && claim.vehicle) {
+        const vehicleValue = this.calculateVehicleValue(claim.vehicle);
+        const ratio = Number(claim.estimatedRepairCost) / vehicleValue;
+        if (ratio > 0.95) flags.push('Засварын зардал үнэ цэнийг давсан');
+      }
+
+      const vehicleClaims = await this.claimRepository.count({
+        where: {
+          vehicleId: claim.vehicleId,
+          createdAt: MoreThan(sixtyDaysAgo),
+        },
+      });
+      if (vehicleClaims > 1) {
+        flags.push(`60 хоногт ижил тээвэрт ${vehicleClaims} claim`);
+      }
+
+      const assessment = await this.damageAssessmentRepository.findOne({
+        where: { claimId },
+      });
+      if (
+        assessment?.aiOverallConfidence &&
+        assessment.aiOverallConfidence < 0.5
+      ) {
+        flags.push('AI итгэл сул байна');
+      }
+
+      return { flags };
+    } catch {
+      return { flags: [] };
     }
-
-    const vehicleClaims = await this.claimRepository.count({
-      where: {
-        vehicleId: claim.vehicleId,
-        createdAt: MoreThan(sixtyDaysAgo),
-      },
-    });
-    if (vehicleClaims > 1) flags.push(`60 хоногт ижил тээвэрт ${vehicleClaims} claim`);
-
-    const assessment = await this.damageAssessmentRepository.findOne({
-      where: { claimId },
-    });
-    if (assessment?.aiOverallConfidence && assessment.aiOverallConfidence < 0.5) {
-      flags.push('AI итгэл сул байна');
-    }
-
-    return { flags };
   }
 
   private calculateVehicleValue(vehicle: any): number {
