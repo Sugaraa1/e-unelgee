@@ -1,7 +1,5 @@
 import apiClient from './apiClient';
 
-// ── Response types ────────────────────────────────────────────
-
 export interface DashboardStats {
   totalUsers: number;
   totalClaims: number;
@@ -57,16 +55,30 @@ export interface FraudAlert {
   createdAt: string;
 }
 
-// ── Helper: response-г зөв задлах ────────────────────────────
-// TransformInterceptor болон AdminController хоёулаа
-// { success, data } гэж wrap хийдэг тул давхар болно:
-// axios response.data → { success, data: { success, data: realData } }
-// Эсвэл зөвхөн нэг давхар:
-// axios response.data → { success, data: realData }
+// ── Шинэ: Санал нийлэхгүй claim ─────────────────────────────
+export interface DisputedClaim {
+  id: string;
+  claimNumber: string;
+  status: string;
+  disputeReason: string;
+  estimatedRepairCost: number | null;
+  accidentType: string;
+  accidentLocation: string;
+  accidentDate: string;
+  submittedBy: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    phoneNumber: string;
+  } | null;
+  vehicleInfo: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 function extractData<T>(responseData: any): T {
   if (!responseData) return responseData as T;
-
-  // Давхар wrap: { success, data: { success, data: real } }
   if (
     responseData.data !== undefined &&
     typeof responseData.data === 'object' &&
@@ -75,12 +87,9 @@ function extractData<T>(responseData: any): T {
   ) {
     return responseData.data.data as T;
   }
-
-  // Нэг давхар: { success, data: real }
   if (responseData.data !== undefined) {
     return responseData.data as T;
   }
-
   return responseData as T;
 }
 
@@ -133,16 +142,13 @@ class AdminService {
     return Array.isArray(data) ? data : [];
   }
 
-  async refreshDashboardData() {
-    return Promise.all([
-      this.getDashboardStats(),
-      this.getQuickStats(),
-      this.getClaimsByStatus(),
-      this.getClaimsByDay(7),
-      this.getTopDamageTypes(10),
-      this.getHighRiskClaims(20),
-      this.getFraudAlerts(20),
-    ]);
+  // ── Шинэ: Санал нийлэхгүй claim-үүд ─────────────────────
+  async getDisputedClaims(limit: number = 50): Promise<DisputedClaim[]> {
+    const response = await apiClient.get('/admin/disputed-claims', {
+      params: { limit },
+    });
+    const data = extractData<DisputedClaim[]>(response.data);
+    return Array.isArray(data) ? data : [];
   }
 }
 
