@@ -27,14 +27,12 @@ export class ClaimsService {
     @InjectRepository(Vehicle)
     private readonly vehicleRepository: Repository<Vehicle>,
 
-    // FIX: Inject DataSource for transactions
     @InjectDataSource()
     private readonly dataSource: DataSource,
   ) {}
 
   // ── CREATE (with race-condition-safe claimNumber) ──────────────
   async create(dto: CreateClaimDto, user: User): Promise<Claim> {
-    // 1. Vehicle ownership check
     const vehicle = await this.vehicleRepository.findOne({
       where: { id: dto.vehicleId },
     });
@@ -49,9 +47,7 @@ export class ClaimsService {
       );
     }
 
-    // 2. FIX: Use transaction + advisory lock to prevent duplicate claimNumbers
     return this.dataSource.transaction(async (manager) => {
-      // Advisory lock per year — only one tx can generate a number at a time
       const year = new Date().getFullYear();
       await manager.query(`SELECT pg_advisory_xact_lock($1)`, [year]);
 
@@ -139,6 +135,75 @@ export class ClaimsService {
 
     await this.claimRepository.softDelete(claim.id);
     return { message: `Claim "${claim.claimNumber}" амжилттай устгагдлаа` };
+  }
+
+  // ── SELF APPROVE ───────────────────────────────────────────────
+  // Хэрэглэгч AI үнэлгээг зөвшөөрч claim-г өөрөө баталгаажуулна
+  async selfApprove(id: string, user: User): Promise<Claim> {
+    const claim = await this.findOne(id, user);
+
+    if (!claim.estimatedRepairCost) {
+      throw new BadRequestException(
+        'AI үнэлгээ дуусаагүй байна. Зураг upload хийж хүлээнэ үү.',
+      );
+    }
+
+    const allowedStatuses = [ClaimStatus.DRAFT, ClaimStatus.SUBMITTED];
+    if (!allowedStatuses.includes(claim.status)) {
+      throw new BadRequestException(
+        `"${claim.status}" статустай claim зөвшөөрөх боломжгүй.`,
+      );
+    }
+
+    await this.claimRepository.update(id, {
+      status: ClaimStatus.APPROVED,
+      approvedAmount: claim.estimatedRepairCost,
+      approvedAt: new Date(),
+      approvedById: user.id,
+      notes: 'Хэрэглэгч AI үнэлгээг зөвшөөрсөн.',
+    });
+
+    return this.claimRepository.findOne({
+      where: { id },
+      relations: ['vehicle'],
+    });
+  }
+
+  // ── DISPUTE ────────────────────────────────────────────────────
+  // Хэрэглэгч AI үнэлгээтэй санал нийлэхгүй бол шалтгаан бичиж мэргэжилтэнд илгээнэ
+  async dispute(id: string, reason: string, user: User): Promise<Claim> {
+    const claim = await this.findOne(id, user);
+
+    if (!reason || reason.trim().length < 5) {
+      throw new BadRequestException(
+        'Санал нийлэхгүй шалтгааныг дор хаяж 5 тэмдэгтээр тайлбарлана уу.',
+      );
+    }
+
+    const allowedStatuses = [ClaimStatus.DRAFT, ClaimStatus.SUBMITTED];
+    if (!allowedStatuses.includes(claim.status)) {
+      throw new BadRequestException(
+        `"${claim.status}" статустай claim-д хүсэлт гаргах боломжгүй.`,
+      );
+    }
+
+    if (!claim.estimatedRepairCost) {
+      throw new BadRequestException(
+        'AI үнэлгээ дуусаагүй байна.',
+      );
+    }
+
+    await this.claimRepository.update(id, {
+      status: ClaimStatus.PENDING_INSPECTION,
+      rejectionReason: reason.trim(),
+      requiresManualReview: true,
+      notes: `Хэрэглэгч санал нийлэхгүй: ${reason.trim()}`,
+    });
+
+    return this.claimRepository.findOne({
+      where: { id },
+      relations: ['vehicle'],
+    });
   }
 
   private checkOwnership(claim: Claim, user: User): void {

@@ -1,4 +1,3 @@
-// src/screens/claims/ClaimDetailScreen.tsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, ActivityIndicator,
@@ -12,52 +11,58 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { COLORS, SPACING, RADIUS, FONT_SIZE, STATUS_COLORS } from '../../constants';
 import { getClaimById } from '../../services/claimsService';
-import { uploadClaimImage, getImageUrl, UploadedImage } from '../../services/imagesService';
+import { uploadClaimImage, getImageUrl, UploadedImage, retryImageAnalysis } from '../../services/imagesService';
 import { usePollingImages } from '../../hooks/usePollingImages';
 import { StatusBadge } from '../../components/StatusBadge';
+import { AIAssessmentCard } from '../../components/AIAssessmentCard';
 import type { Claim, ClaimsStackParamList } from '../../types';
-import { retryImageAnalysis } from '../../services/imagesService';
 
 type Props = {
   navigation: NativeStackNavigationProp<ClaimsStackParamList, 'ClaimDetail'>;
-  route:      RouteProp<ClaimsStackParamList, 'ClaimDetail'>;
+  route: RouteProp<ClaimsStackParamList, 'ClaimDetail'>;
 };
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const IMG_SIZE = (SCREEN_W - SPACING.lg * 2 - SPACING.sm * 2) / 3;
 
-// ── Label maps ────────────────────────────────────────────────
 const STATUS_LABELS: Record<string, string> = {
-  draft: 'Ноорог', submitted: 'Илгээсэн', under_review: 'Хянагдаж байна',
-  ai_processing: 'AI боловсруулж байна', pending_inspection: 'Шалгалт хүлээж байна',
-  approved: 'Зөвшөөрсөн', partially_approved: 'Хэсэгчлэн зөвшөөрсөн',
-  rejected: 'Татгалзсан', closed: 'Хаагдсан',
+  draft: 'Ноорог',
+  submitted: 'Илгээсэн',
+  under_review: 'Хянагдаж байна',
+  ai_processing: 'AI боловсруулж байна',
+  pending_inspection: 'Шалгалт хүлээж байна',
+  approved: 'Зөвшөөрсөн',
+  partially_approved: 'Хэсэгчлэн зөвшөөрсөн',
+  rejected: 'Татгалзсан',
+  closed: 'Хаагдсан',
 };
+
 const TYPE_LABELS: Record<string, string> = {
   collision: 'Мөргөлдөөн', rear_end: 'Ар талаас', side_impact: 'Хажуугийн цохилт',
   rollover: 'Эргэлт', hit_and_run: 'Зугтсан', weather: 'Цаг агаар',
   vandalism: 'Эвдрэл/Хулгай', theft: 'Хулгай', fire: 'Түймэр', flood: 'Үер', other: 'Бусад',
 };
+
 const SEV_COLORS: Record<string, string> = {
   minor: COLORS.secondary, moderate: COLORS.warning, severe: COLORS.danger, total_loss: '#7C3AED',
 };
+
 const SEV_LABELS: Record<string, string> = {
   minor: 'Бага', moderate: 'Дунд', severe: 'Хүнд', total_loss: 'Бүрэн гэмтэл', none: 'Гэмтэлгүй',
 };
+
 const DAMAGE_MN: Record<string, string> = {
   scratch: 'Үрчлэх', dent: 'Зан', crack: 'Хагарал',
   broken: 'Хугарал', paint_damage: 'Будаг эвдрэл', glass_damage: 'Шил эвдрэл',
 };
 
-// ════════════════════════════════════════════════════════════════
-// SUB-COMPONENTS
-// ════════════════════════════════════════════════════════════════
+// ── Sub components ────────────────────────────────────────────
 
 const Skeleton = ({ width, height, radius = 8, style }: any) => {
   const anim = useRef(new Animated.Value(0.4)).current;
   useEffect(() => {
     const loop = Animated.loop(Animated.sequence([
-      Animated.timing(anim, { toValue: 1,   duration: 800, useNativeDriver: true }),
+      Animated.timing(anim, { toValue: 1, duration: 800, useNativeDriver: true }),
       Animated.timing(anim, { toValue: 0.4, duration: 800, useNativeDriver: true }),
     ]));
     loop.start();
@@ -112,7 +117,6 @@ const AIProcessingBanner = ({ count }: { count: number }) => {
   );
 };
 
-// ── AI Result Modal ───────────────────────────────────────────
 const AIResultModal = ({
   image, visible, onClose, onRetry,
 }: {
@@ -120,8 +124,8 @@ const AIResultModal = ({
   onClose: () => void; onRetry: (id: string) => void;
 }) => {
   if (!image) return null;
-  const result     = image.aiAnalysisResult || {};
-  const isFailed   = image.status === 'failed';
+  const result = image.aiAnalysisResult || {};
+  const isFailed = image.status === 'failed';
   const isAnalyzed = image.status === 'analyzed';
 
   return (
@@ -142,7 +146,6 @@ const AIResultModal = ({
         <ScrollView contentContainerStyle={cs.modalContent} showsVerticalScrollIndicator={false}>
           <Image source={{ uri: getImageUrl(image.fileUrl) }} style={cs.modalThumb} resizeMode="cover" />
 
-          {/* Failed */}
           {isFailed && (
             <View style={cs.failedBox}>
               <Ionicons name="warning-outline" size={32} color={COLORS.danger} />
@@ -155,7 +158,6 @@ const AIResultModal = ({
             </View>
           )}
 
-          {/* Processing */}
           {(image.status === 'processing' || image.status === 'pending') && (
             <View style={cs.processingBox}>
               <ActivityIndicator size="large" color={COLORS.primary} />
@@ -164,10 +166,8 @@ const AIResultModal = ({
             </View>
           )}
 
-          {/* Analyzed */}
           {isAnalyzed && result && (
             <>
-              {/* Summary */}
               <View style={cs.summaryCard}>
                 <View style={cs.summaryRow}>
                   <View style={{ flex: 1, gap: 6 }}>
@@ -191,7 +191,6 @@ const AIResultModal = ({
                 </View>
               </View>
 
-              {/* Parts */}
               {Array.isArray(result.damagedParts) && result.damagedParts.length > 0 && (
                 <View style={{ gap: SPACING.sm }}>
                   <Text style={cs.partsSectionTitle}>🔍 Илэрсэн гэмтэл ({result.damagedParts.length} хэсэг)</Text>
@@ -221,7 +220,6 @@ const AIResultModal = ({
                 </View>
               )}
 
-              {/* Recommendations */}
               {Array.isArray(result.recommendations) && result.recommendations.length > 0 && (
                 <View style={cs.recommendBox}>
                   <Text style={cs.recommendTitle}>💡 Зөвлөмж</Text>
@@ -234,7 +232,6 @@ const AIResultModal = ({
                 </View>
               )}
 
-              {/* Analysis details */}
               {!!result.analysisDetails && (
                 <View style={cs.detailBox}>
                   <Text style={cs.detailTitle}>📋 Дэлгэрэнгүй</Text>
@@ -249,16 +246,14 @@ const AIResultModal = ({
   );
 };
 
-// ════════════════════════════════════════════════════════════════
-// MAIN SCREEN
-// ════════════════════════════════════════════════════════════════
+// ── MAIN SCREEN ───────────────────────────────────────────────
 export const ClaimDetailScreen = ({ navigation, route }: Props) => {
   const { claimId } = route.params;
 
-  const [claim, setClaim]             = useState<Claim | null>(null);
+  const [claim, setClaim] = useState<Claim | null>(null);
   const [claimLoading, setClaimLoading] = useState(true);
-  const [uploading, setUploading]     = useState(false);
-  const [refreshing, setRefreshing]   = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedImage, setSelectedImage] = useState<UploadedImage | null>(null);
   const [aiModalVisible, setAiModalVisible] = useState(false);
 
@@ -280,7 +275,7 @@ export const ClaimDetailScreen = ({ navigation, route }: Props) => {
 
   useEffect(() => { fetchClaim(); }, [fetchClaim]);
 
-  // AI дуусмагц claim-ийн зардлыг refresh хийнэ
+  // AI дуусмагц claim refresh
   useEffect(() => {
     if (allAnalyzed) fetchClaim();
   }, [allAnalyzed]);
@@ -291,7 +286,6 @@ export const ClaimDetailScreen = ({ navigation, route }: Props) => {
     setRefreshing(false);
   }, [fetchClaim, refresh]);
 
-  // ── Upload ──────────────────────────────────────────────────
   const handleUpload = async (uri: string) => {
     if (!claim) return;
     setUploading(true);
@@ -326,26 +320,26 @@ export const ClaimDetailScreen = ({ navigation, route }: Props) => {
   };
 
   const handleAddPhoto = () => Alert.alert('Зураг нэмэх', '', [
-    { text: '📷 Камераар авах',   onPress: handleTakePhoto },
-    { text: '🖼️ Галлерейгаас',    onPress: handlePickGallery },
+    { text: '📷 Камераар авах', onPress: handleTakePhoto },
+    { text: '🖼️ Галлерейгаас', onPress: handlePickGallery },
     { text: 'Болих', style: 'cancel' },
   ]);
 
   const handleRetry = async (id: string) => {
-  try {
-    await retryImageAnalysis(id);
-    await refresh();
-    Alert.alert('Амжилттай', 'AI шинжилгээ дахин эхэллээ');
-  } catch (err: any) {
-    const msg = err?.response?.data?.message ?? 'Retry амжилтгүй болсон';
-    Alert.alert('Алдаа', Array.isArray(msg) ? msg.join('\n') : msg);
-  }
-};
-  const processingCount = images.filter((i) => i.status === 'pending' || i.status === 'processing').length;
-  const analyzedCount   = images.filter((i) => i.status === 'analyzed').length;
-  const progressPct     = images.length > 0 ? Math.round((analyzedCount / images.length) * 100) : 0;
+    try {
+      await retryImageAnalysis(id);
+      await refresh();
+      Alert.alert('Амжилттай', 'AI шинжилгээ дахин эхэллээ');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message ?? 'Retry амжилтгүй болсон';
+      Alert.alert('Алдаа', Array.isArray(msg) ? msg.join('\n') : msg);
+    }
+  };
 
-  // ── Loading ─────────────────────────────────────────────────
+  const processingCount = images.filter((i) => i.status === 'pending' || i.status === 'processing').length;
+  const analyzedCount = images.filter((i) => i.status === 'analyzed').length;
+  const progressPct = images.length > 0 ? Math.round((analyzedCount / images.length) * 100) : 0;
+
   if (claimLoading) {
     return (
       <SafeAreaView style={cs.safe}>
@@ -411,23 +405,40 @@ export const ClaimDetailScreen = ({ navigation, route }: Props) => {
           </View>
         </View>
 
-        {/* Cost card */}
-        {claimLoading ? (
-          <Skeleton width="100%" height={80} radius={RADIUS.lg} />
-        ) : claim.estimatedRepairCost != null ? (
-          <View style={cs.costCard}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-              <Ionicons name="cash-outline" size={18} color={COLORS.secondary} />
-              <Text style={cs.costLabel}>AI тооцоолсон засварын зардал</Text>
+        {/* ── AI ASSESSMENT CARD ─────────────────────────────────
+            estimatedRepairCost байгаа үед болон draft/submitted статуст харуулна.
+            Зөвшөөрөх → status: approved, approvedAmount нэмэгдэнэ
+            Санал нийлэхгүй → status: pending_inspection, мэргэжилтэн шалгана
+        ── */}
+        {claim.estimatedRepairCost != null && (
+          <AIAssessmentCard
+            claimId={claimId}
+            estimatedRepairCost={Number(claim.estimatedRepairCost)}
+            status={claim.status}
+            onStatusChange={fetchClaim}
+          />
+        )}
+
+        {/* Cost card — approved болсны дараа харуулна */}
+        {claim.approvedAmount != null && claim.status === 'approved' && (
+          <View style={cs.approvedCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name="checkmark-circle" size={20} color={COLORS.secondary} />
+              <Text style={cs.approvedLabel}>Зөвшөөрөгдсөн төлбөр</Text>
             </View>
-            <Text style={cs.costValue}>₮{Number(claim.estimatedRepairCost).toLocaleString()}</Text>
+            <Text style={cs.approvedValue}>
+              ₮{Number(claim.approvedAmount).toLocaleString()}
+            </Text>
           </View>
-        ) : isPolling ? (
+        )}
+
+        {/* AI тооцоолж байгаа үед харуулах */}
+        {claim.estimatedRepairCost == null && isPolling && (
           <View style={cs.costPending}>
             <ActivityIndicator size="small" color={COLORS.primary} style={{ marginRight: 8 }} />
-            <Text style={cs.costPendingText}>Зардлыг тооцоолж байна...</Text>
+            <Text style={cs.costPendingText}>AI зардлыг тооцоолж байна...</Text>
           </View>
-        ) : null}
+        )}
 
         {/* Photos */}
         <View style={cs.card}>
@@ -443,7 +454,6 @@ export const ClaimDetailScreen = ({ navigation, route }: Props) => {
             </TouchableOpacity>
           </View>
 
-          {/* Progress */}
           {images.length > 0 && (
             <View style={{ gap: 4 }}>
               <View style={cs.progressBg}>
@@ -453,7 +463,6 @@ export const ClaimDetailScreen = ({ navigation, route }: Props) => {
             </View>
           )}
 
-          {/* Upload indicator */}
           {uploading && (
             <View style={cs.uploadRow}>
               <ActivityIndicator size="small" color={COLORS.primary} />
@@ -461,7 +470,6 @@ export const ClaimDetailScreen = ({ navigation, route }: Props) => {
             </View>
           )}
 
-          {/* Grid */}
           {imagesLoading ? (
             <View style={cs.grid}>
               {[1, 2, 3].map((i) => <Skeleton key={i} width={IMG_SIZE} height={IMG_SIZE} radius={RADIUS.sm} />)}
@@ -520,7 +528,7 @@ export const ClaimDetailScreen = ({ navigation, route }: Props) => {
           <SectionTitle icon="warning-outline" title="Ослын мэдээлэл" />
           <InfoRow label="Ослын төрөл" value={TYPE_LABELS[claim.accidentType] ?? claim.accidentType} />
           <InfoRow label="Ослын огноо" value={accidentDate} />
-          <InfoRow label="Байршил"     value={claim.accidentLocation} />
+          <InfoRow label="Байршил" value={claim.accidentLocation} />
           {claim.latitude && claim.longitude && (
             <InfoRow label="GPS" value={`${Number(claim.latitude).toFixed(6)}, ${Number(claim.longitude).toFixed(6)}`} mono />
           )}
@@ -555,9 +563,9 @@ export const ClaimDetailScreen = ({ navigation, route }: Props) => {
         {claim.thirdPartyInvolved && (
           <View style={cs.card}>
             <SectionTitle icon="people-outline" title="Гуравдагч тал" />
-            {claim.thirdPartyName          && <InfoRow label="Нэр"          value={claim.thirdPartyName} />}
-            {claim.thirdPartyLicensePlate  && <InfoRow label="Улсын дугаар" value={claim.thirdPartyLicensePlate} />}
-            {claim.thirdPartyInsurance     && <InfoRow label="Даатгал"      value={claim.thirdPartyInsurance} />}
+            {claim.thirdPartyName && <InfoRow label="Нэр" value={claim.thirdPartyName} />}
+            {claim.thirdPartyLicensePlate && <InfoRow label="Улсын дугаар" value={claim.thirdPartyLicensePlate} />}
+            {claim.thirdPartyInsurance && <InfoRow label="Даатгал" value={claim.thirdPartyInsurance} />}
           </View>
         )}
 
@@ -591,27 +599,25 @@ export const ClaimDetailScreen = ({ navigation, route }: Props) => {
   );
 };
 
-// ════════════════════════════════════════════════════════════════
-// STYLES
-// ════════════════════════════════════════════════════════════════
+// ── STYLES ────────────────────────────────────────────────────
 const cs = StyleSheet.create({
-  safe:        { flex: 1, backgroundColor: COLORS.background },
-  loadingBox:  { flex: 1, justifyContent: 'center', alignItems: 'center', gap: SPACING.sm },
+  safe: { flex: 1, backgroundColor: COLORS.background },
+  loadingBox: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: SPACING.sm },
   loadingText: { fontSize: FONT_SIZE.sm, color: COLORS.textMuted },
 
-  header:      {
+  header: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
     paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg, paddingBottom: SPACING.md,
     borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.surface,
   },
-  backBtn:     {
+  backBtn: {
     width: 40, height: 40, borderRadius: RADIUS.md, backgroundColor: COLORS.background,
     justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: COLORS.border,
   },
   headerTitle: { fontSize: FONT_SIZE.lg, fontWeight: '700', color: COLORS.text },
-  headerSub:   { fontSize: FONT_SIZE.xs, color: COLORS.textMuted },
+  headerSub: { fontSize: FONT_SIZE.xs, color: COLORS.textMuted },
 
-  aiBanner:        {
+  aiBanner: {
     backgroundColor: COLORS.primary, paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg, overflow: 'hidden',
   },
@@ -620,72 +626,77 @@ const cs = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.2)',
   },
   aiBannerContent: { flexDirection: 'row', alignItems: 'center' },
-  aiBannerText:    { color: COLORS.white, fontWeight: '600', fontSize: FONT_SIZE.sm },
+  aiBannerText: { color: COLORS.white, fontWeight: '600', fontSize: FONT_SIZE.sm },
 
   content: { padding: SPACING.lg, gap: SPACING.md },
 
-  heroCard:  {
+  heroCard: {
     backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING.lg,
     borderWidth: 1, borderColor: COLORS.border,
   },
-  heroTop:   { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.sm },
-  heroIcon:  {
+  heroTop: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.sm },
+  heroIcon: {
     width: 48, height: 48, borderRadius: RADIUS.md,
     backgroundColor: COLORS.primary + '12', justifyContent: 'center', alignItems: 'center',
   },
   heroNumber: { fontSize: FONT_SIZE.xl, fontWeight: '800', color: COLORS.text },
-  heroDate:   { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, marginTop: 2 },
+  heroDate: { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, marginTop: 2 },
   heroBottom: { flexDirection: 'row', gap: SPACING.sm, flexWrap: 'wrap' },
 
-  badge:     { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: RADIUS.full, paddingHorizontal: 10, paddingVertical: 4 },
-  dot:       { width: 6, height: 6, borderRadius: 3 },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: RADIUS.full, paddingHorizontal: 10, paddingVertical: 4 },
+  dot: { width: 6, height: 6, borderRadius: 3 },
   badgeText: { fontSize: 11, fontWeight: '700' },
 
-  sevPill:     { borderRadius: RADIUS.full, paddingHorizontal: 10, paddingVertical: 4 },
+  sevPill: { borderRadius: RADIUS.full, paddingHorizontal: 10, paddingVertical: 4 },
   sevPillText: { fontSize: 11, fontWeight: '700' },
 
-  costCard: {
-    backgroundColor: COLORS.secondary + '10', borderRadius: RADIUS.lg, padding: SPACING.md,
-    borderWidth: 1.5, borderColor: COLORS.secondary + '40',
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  // Approved card
+  approvedCard: {
+    backgroundColor: COLORS.secondary + '10',
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    borderWidth: 1.5,
+    borderColor: COLORS.secondary + '40',
+    gap: 6,
   },
-  costLabel:   { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, flex: 1 },
-  costValue:   { fontSize: FONT_SIZE.xl, fontWeight: '800', color: COLORS.secondary },
+  approvedLabel: { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, fontWeight: '600' },
+  approvedValue: { fontSize: FONT_SIZE.xl, fontWeight: '800', color: COLORS.secondary },
+
   costPending: {
     backgroundColor: COLORS.primary + '08', borderRadius: RADIUS.lg, padding: SPACING.md,
     borderWidth: 1, borderColor: COLORS.border, flexDirection: 'row', alignItems: 'center',
   },
   costPendingText: { fontSize: FONT_SIZE.sm, color: COLORS.textMuted },
 
-  card:         {
+  card: {
     backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING.md,
     borderWidth: 1, borderColor: COLORS.border, gap: SPACING.sm,
   },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
-  sectionTitle:  { fontSize: FONT_SIZE.sm, fontWeight: '700', color: COLORS.text },
+  sectionTitle: { fontSize: FONT_SIZE.sm, fontWeight: '700', color: COLORS.text },
 
-  photoHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  addPhotoBtn:   {
+  photoHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  addPhotoBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: COLORS.primary, borderRadius: RADIUS.sm, paddingHorizontal: 10, paddingVertical: 6,
   },
   addPhotoBtnText: { color: COLORS.white, fontSize: FONT_SIZE.xs, fontWeight: '700' },
 
-  progressBg:   { height: 5, backgroundColor: COLORS.border, borderRadius: RADIUS.full, overflow: 'hidden' },
+  progressBg: { height: 5, backgroundColor: COLORS.border, borderRadius: RADIUS.full, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: COLORS.secondary, borderRadius: RADIUS.full },
   progressText: { fontSize: 10, color: COLORS.textMuted, textAlign: 'right' },
 
-  uploadRow:  {
+  uploadRow: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
     backgroundColor: COLORS.primary + '10', borderRadius: RADIUS.sm, padding: SPACING.sm,
   },
   uploadText: { fontSize: FONT_SIZE.sm, color: COLORS.primary, fontWeight: '500' },
 
-  grid:       { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
-  imgThumb:   { width: IMG_SIZE, height: IMG_SIZE, borderRadius: RADIUS.sm, overflow: 'hidden', backgroundColor: COLORS.border },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
+  imgThumb: { width: IMG_SIZE, height: IMG_SIZE, borderRadius: RADIUS.sm, overflow: 'hidden', backgroundColor: COLORS.border },
   imgThumbImg: { width: '100%', height: '100%' },
-  imgBadge:   { position: 'absolute', bottom: 4, left: 4 },
-  imgDim:     {
+  imgBadge: { position: 'absolute', bottom: 4, left: 4 },
+  imgDim: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center',
   },
@@ -696,14 +707,14 @@ const cs = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
 
-  photoEmpty:     { alignItems: 'center', paddingVertical: SPACING.lg, gap: SPACING.sm },
+  photoEmpty: { alignItems: 'center', paddingVertical: SPACING.lg, gap: SPACING.sm },
   photoEmptyIcon: {
     width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.background,
     borderWidth: 1, borderColor: COLORS.border, justifyContent: 'center', alignItems: 'center',
   },
   photoEmptyTitle: { fontSize: FONT_SIZE.sm, fontWeight: '700', color: COLORS.textMuted },
-  photoEmptySub:   { fontSize: FONT_SIZE.xs, color: COLORS.textLight, textAlign: 'center', lineHeight: 18 },
-  cameraBtn:  {
+  photoEmptySub: { fontSize: FONT_SIZE.xs, color: COLORS.textLight, textAlign: 'center', lineHeight: 18 },
+  cameraBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: COLORS.primary, borderRadius: RADIUS.sm, paddingHorizontal: 14, paddingVertical: 9,
   },
@@ -715,16 +726,16 @@ const cs = StyleSheet.create({
   },
   galleryBtnText: { color: COLORS.primary, fontWeight: '700', fontSize: FONT_SIZE.xs },
 
-  infoRow:   {
+  infoRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
     paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: COLORS.background,
   },
   infoLabel: { fontSize: FONT_SIZE.sm, color: COLORS.textMuted, flex: 1 },
   infoValue: { fontSize: FONT_SIZE.sm, color: COLORS.text, fontWeight: '500', flex: 2, textAlign: 'right' },
-  mono:      { fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
+  mono: { fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
   description: { fontSize: FONT_SIZE.sm, color: COLORS.text, lineHeight: 22, paddingTop: 2 },
 
-  vehicleBox:  {
+  vehicleBox: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
     backgroundColor: COLORS.background, borderRadius: RADIUS.md, padding: SPACING.md,
   },
@@ -733,75 +744,75 @@ const cs = StyleSheet.create({
     backgroundColor: COLORS.primary + '12', justifyContent: 'center', alignItems: 'center',
   },
   vehicleName: { fontSize: FONT_SIZE.md, fontWeight: '700', color: COLORS.text },
-  vehicleSub:  { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, marginTop: 2 },
-  plateBox:    {
+  vehicleSub: { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, marginTop: 2 },
+  plateBox: {
     marginTop: 5, backgroundColor: COLORS.surface, borderRadius: RADIUS.sm,
     paddingHorizontal: 8, paddingVertical: 2, alignSelf: 'flex-start',
     borderWidth: 1, borderColor: COLORS.border,
   },
-  plateText:   { fontSize: FONT_SIZE.xs, fontWeight: '700', color: COLORS.text, letterSpacing: 1 },
-  boolText:    { fontSize: FONT_SIZE.sm, fontWeight: '500' },
+  plateText: { fontSize: FONT_SIZE.xs, fontWeight: '700', color: COLORS.text, letterSpacing: 1 },
+  boolText: { fontSize: FONT_SIZE.sm, fontWeight: '500' },
 
   // Modal
-  modalSafe:    { flex: 1, backgroundColor: COLORS.surface },
-  modalHeader:  {
+  modalSafe: { flex: 1, backgroundColor: COLORS.surface },
+  modalHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
     paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
-  modalTitle:   { fontSize: FONT_SIZE.lg, fontWeight: '700', color: COLORS.text },
-  modalSub:     { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, marginTop: 2 },
+  modalTitle: { fontSize: FONT_SIZE.lg, fontWeight: '700', color: COLORS.text },
+  modalSub: { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, marginTop: 2 },
   modalCloseBtn: {
     width: 34, height: 34, borderRadius: RADIUS.sm,
     backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center',
     borderWidth: 1, borderColor: COLORS.border,
   },
   modalContent: { padding: SPACING.lg, gap: SPACING.md, paddingBottom: SPACING.xxl },
-  modalThumb:   { width: '100%', height: 200, borderRadius: RADIUS.md, backgroundColor: COLORS.border },
+  modalThumb: { width: '100%', height: 200, borderRadius: RADIUS.md, backgroundColor: COLORS.border },
 
-  failedBox:   { alignItems: 'center', padding: SPACING.xl, gap: SPACING.sm, backgroundColor: '#FEF2F2', borderRadius: RADIUS.lg },
+  failedBox: { alignItems: 'center', padding: SPACING.xl, gap: SPACING.sm, backgroundColor: '#FEF2F2', borderRadius: RADIUS.lg },
   failedTitle: { fontSize: FONT_SIZE.md, fontWeight: '700', color: COLORS.danger },
-  failedDesc:  { fontSize: FONT_SIZE.sm, color: COLORS.textMuted, textAlign: 'center', lineHeight: 20 },
-  retryBtn:    {
+  failedDesc: { fontSize: FONT_SIZE.sm, color: COLORS.textMuted, textAlign: 'center', lineHeight: 20 },
+  retryBtn: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
     backgroundColor: COLORS.danger, borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg, paddingVertical: 10, marginTop: 4,
   },
   retryBtnText: { color: COLORS.white, fontWeight: '700', fontSize: FONT_SIZE.sm },
 
-  processingBox:     { alignItems: 'center', padding: SPACING.xl, gap: SPACING.sm },
-  processingText:    { fontSize: FONT_SIZE.md, fontWeight: '700', color: COLORS.text },
+  processingBox: { alignItems: 'center', padding: SPACING.xl, gap: SPACING.sm },
+  processingText: { fontSize: FONT_SIZE.md, fontWeight: '700', color: COLORS.text },
   processingSubText: { fontSize: FONT_SIZE.sm, color: COLORS.textMuted },
 
-  summaryCard:  { backgroundColor: COLORS.background, borderRadius: RADIUS.lg, padding: SPACING.md },
-  summaryRow:   { flexDirection: 'row', gap: SPACING.md },
+  summaryCard: { backgroundColor: COLORS.background, borderRadius: RADIUS.lg, padding: SPACING.md },
+  summaryRow: { flexDirection: 'row', gap: SPACING.md },
   summaryLabel: { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, fontWeight: '600' },
 
-  sevChip:     { borderRadius: RADIUS.full, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start' },
+  sevChip: { borderRadius: RADIUS.full, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start' },
   sevChipText: { fontSize: FONT_SIZE.xs, fontWeight: '700' },
 
-  confBar:  { height: 6, backgroundColor: COLORS.border, borderRadius: RADIUS.full, overflow: 'hidden' },
+  confBar: { height: 6, backgroundColor: COLORS.border, borderRadius: RADIUS.full, overflow: 'hidden' },
   confFill: { height: '100%', borderRadius: RADIUS.full },
   confText: { fontSize: FONT_SIZE.xs, color: COLORS.textMuted },
 
   partsSectionTitle: { fontSize: FONT_SIZE.sm, fontWeight: '700', color: COLORS.text },
-  partCard:          {
+  partCard: {
     backgroundColor: COLORS.background, borderRadius: RADIUS.md, padding: SPACING.md,
     gap: 6, borderWidth: 1, borderColor: COLORS.border,
   },
-  partHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  partName:     { fontSize: FONT_SIZE.sm, fontWeight: '700', color: COLORS.text, flex: 1 },
-  sevTag:       { borderRadius: RADIUS.full, paddingHorizontal: 8, paddingVertical: 2 },
-  sevTagText:   { fontSize: 10, fontWeight: '700' },
-  partType:     { fontSize: FONT_SIZE.xs, color: COLORS.textMuted },
+  partHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  partName: { fontSize: FONT_SIZE.sm, fontWeight: '700', color: COLORS.text, flex: 1 },
+  sevTag: { borderRadius: RADIUS.full, paddingHorizontal: 8, paddingVertical: 2 },
+  sevTagText: { fontSize: 10, fontWeight: '700' },
+  partType: { fontSize: FONT_SIZE.xs, color: COLORS.textMuted },
   partConfLabel: { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, width: 36 },
   partConfValue: { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, width: 30, textAlign: 'right' },
 
-  recommendBox:   { backgroundColor: COLORS.secondary + '08', borderRadius: RADIUS.lg, padding: SPACING.md, gap: 7 },
+  recommendBox: { backgroundColor: COLORS.secondary + '08', borderRadius: RADIUS.lg, padding: SPACING.md, gap: 7 },
   recommendTitle: { fontSize: FONT_SIZE.sm, fontWeight: '700', color: COLORS.text },
-  recommendText:  { fontSize: FONT_SIZE.xs, color: COLORS.text, flex: 1, lineHeight: 18 },
+  recommendText: { fontSize: FONT_SIZE.xs, color: COLORS.text, flex: 1, lineHeight: 18 },
 
-  detailBox:   { backgroundColor: COLORS.background, borderRadius: RADIUS.md, padding: SPACING.md, gap: 5 },
+  detailBox: { backgroundColor: COLORS.background, borderRadius: RADIUS.md, padding: SPACING.md, gap: 5 },
   detailTitle: { fontSize: FONT_SIZE.sm, fontWeight: '700', color: COLORS.text },
-  detailText:  { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, lineHeight: 18 },
+  detailText: { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, lineHeight: 18 },
 });
