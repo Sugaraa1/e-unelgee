@@ -1,4 +1,4 @@
-import React from 'react';
+//import React from 'react';
 import { View, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -12,6 +12,7 @@ import { AdminDashboardScreen } from '../screens/dashboard/AdminDashboardScreen'
 import { useAuthStore } from '../store/authStore';
 import type { MainTabParamList } from '../types';
 import { COLORS } from '../constants';
+import React, { useMemo } from 'react';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -52,7 +53,7 @@ const TabIcon = ({
 
 export const MainNavigator = () => {
   const { user } = useAuthStore();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = useMemo(() => user?.role === 'admin', [user?.role]);
 
   const ICON_MAP: Record<string, { active: string; inactive: string }> = {
     Dashboard: { active: 'home', inactive: 'home-outline' },

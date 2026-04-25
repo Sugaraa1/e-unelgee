@@ -1,3 +1,4 @@
+// FIX: retryImageAnalysis now calls the backend retry endpoint
 import apiClient from './apiClient';
 import type { ApiResponse } from '../types';
 import type { AxiosProgressEvent } from 'axios';
@@ -13,7 +14,6 @@ export interface UploadedImage {
   imageType: string;
   status: 'pending' | 'processing' | 'analyzed' | 'failed';
   createdAt: string;
-  // AI Analysis fields (optional)
   aiAnalysisResult?: {
     damagedParts?: Array<{
       partName: string;
@@ -34,7 +34,6 @@ export interface UploadedImage {
 
 /**
  * POST /images/upload
- * multipart/form-data: file + claimId
  */
 export const uploadClaimImage = async (
   claimId: string,
@@ -43,7 +42,6 @@ export const uploadClaimImage = async (
 ): Promise<UploadedImage> => {
   const formData = new FormData();
 
-  // React Native-д file object ийм байдлаар FormData-д оруулна
   formData.append('file', {
     uri: imageUri,
     name: fileName,
@@ -56,16 +54,11 @@ export const uploadClaimImage = async (
     '/images/upload',
     formData,
     {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-      // Upload явцыг хянах (optional)
+      headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress: (progressEvent: AxiosProgressEvent) => {
         if (progressEvent.total) {
-          const percent = Math.round(
-            (progressEvent.loaded * 100) / progressEvent.total,
-          );
-          console.log(`Upload progress: ${percent}%`);
+          const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          console.log(`Upload: ${percent}%`);
         }
       },
     },
@@ -76,7 +69,6 @@ export const uploadClaimImage = async (
 
 /**
  * GET /images?claimId=xxx
- * Claim-ийн бүх зургийг авах
  */
 export const getClaimImages = async (claimId: string): Promise<UploadedImage[]> => {
   const { data } = await apiClient.get<ApiResponse<UploadedImage[]>>(
@@ -86,23 +78,32 @@ export const getClaimImages = async (claimId: string): Promise<UploadedImage[]> 
 };
 
 /**
- * Helper function to construct proper image URL
- * Handles both relative (/uploads/...) and absolute (http://...) URLs
+ * FIX: POST /images/:id/retry — calls the new backend retry endpoint
+ * Previously only reset local state; now triggers server-side re-analysis
+ */
+export const retryImageAnalysis = async (imageId: string): Promise<{ message: string }> => {
+  const { data } = await apiClient.post<ApiResponse<{ message: string }>>(
+    `/images/${imageId}/retry`,
+  );
+  return data.data;
+};
+
+/**
+ * Helper: construct proper image URL from relative or absolute path
+ * FIX: Uses EXPO_PUBLIC_API_URL env var consistently
  */
 export const getImageUrl = (fileUrl: string): string => {
   if (!fileUrl) return '';
-  
-  // If it's already an absolute URL, return it
+
   if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
     return fileUrl;
   }
-  
-  // If it's a relative path, construct full URL
+
   if (fileUrl.startsWith('/uploads/')) {
-    const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.100:3000/api/v1';
-    const baseUrl = API_BASE_URL.replace('/api/v1', '');
+    const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000/api/v1';
+    const baseUrl = apiUrl.replace('/api/v1', '').replace(/\/$/, '');
     return `${baseUrl}${fileUrl}`;
   }
-  
+
   return fileUrl;
 };

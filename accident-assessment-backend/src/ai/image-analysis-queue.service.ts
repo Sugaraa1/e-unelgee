@@ -1,4 +1,4 @@
-// src/ai/image-analysis-queue.service.ts
+// FIX: Use PUBLIC_BASE_URL from config, validate it at startup
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -18,7 +18,7 @@ export class ImageAnalysisQueueService {
   private readonly logger = new Logger(ImageAnalysisQueueService.name);
   private queue: AnalysisTask[] = [];
   private processing = false;
-  private publicBaseUrl: string;
+  private readonly publicBaseUrl: string;
 
   constructor(
     @InjectRepository(Image)
@@ -26,162 +26,87 @@ export class ImageAnalysisQueueService {
     private readonly aiService: AIService,
     private readonly configService: ConfigService,
   ) {
-    // 🌐 ngrok эсвэл production URL авах
-    // Development: https://abc123.ngrok.io (ngrok-оос авах)
-    // Production: https://api.example.com
-    this.publicBaseUrl =
-      this.configService.get<string>('PUBLIC_BASE_URL') ||
-      this.configService.get<string>('BACKEND_BASE_URL') ||
-      'http://localhost:3000';
+    // FIX: Resolve PUBLIC_BASE_URL once at startup; warn loudly if missing
+    const explicit = this.configService.get<string>('PUBLIC_BASE_URL');
+    const port = this.configService.get<number>('PORT', 3000);
 
-    this.logger.log(`🌐 Public Base URL: ${this.publicBaseUrl}`);
+    if (!explicit || explicit === 'http://localhost:3000') {
+      this.logger.warn(
+        '⚠️  PUBLIC_BASE_URL is not set or uses localhost. OpenAI CANNOT access local files. ' +
+        'Use ngrok in development: ngrok http 3000, then set PUBLIC_BASE_URL=https://YOUR_NGROK_URL',
+      );
+    }
+
+    this.publicBaseUrl = (explicit ?? `http://localhost:${port}`).replace(/\/$/, '');
+    this.logger.log(`🌐 Queue processor using public URL: ${this.publicBaseUrl}`);
     this.startQueueProcessor();
   }
 
-  /**
-   * Add image to analysis queue
-   */
   async enqueueImageAnalysis(imageId: string, fileUrl: string): Promise<void> {
-    this.queue.push({
-      imageId,
-      fileUrl,
-      retries: 0,
-      maxRetries: 3,
-    });
-
-    this.logger.log(
-      `📝 Image ${imageId} added to queue. Queue size: ${this.queue.length}`,
-    );
+    this.queue.push({ imageId, fileUrl, retries: 0, maxRetries: 3 });
+    this.logger.log(`📝 Enqueued image ${imageId}. Queue size: ${this.queue.length}`);
   }
 
-  /**
-   * Process queue in background
-   */
   private startQueueProcessor(): void {
     setInterval(async () => {
-      if (this.queue.length === 0 || this.processing) {
-        return;
-      }
+      if (this.queue.length === 0 || this.processing) return;
 
       this.processing = true;
-
       try {
         const task = this.queue.shift();
         if (!task) return;
-
-        this.logger.log(
-          `⏳ Processing: ${task.imageId} (Attempt ${task.retries + 1}/${task.maxRetries})`,
-        );
-
         await this.processImageAnalysis(task);
       } catch (error) {
         this.logger.error('Queue processor error:', error);
       } finally {
         this.processing = false;
       }
-    }, 5000); // 5 сек бүрт шалгах
+    }, 5000);
   }
 
-  /**
-   * Process single image analysis
-   */
   private async processImageAnalysis(task: AnalysisTask): Promise<void> {
     try {
-      const image = await this.imageRepository.findOne({
-        where: { id: task.imageId },
-      });
-
+      const image = await this.imageRepository.findOne({ where: { id: task.imageId } });
       if (!image) {
         this.logger.warn(`Image not found: ${task.imageId}`);
         return;
       }
 
-      // 🌐 Relative → PUBLIC URL болгох
+      // FIX: Always use publicBaseUrl for relative paths
       const publicImageUrl = task.fileUrl.startsWith('http')
         ? task.fileUrl
         : `${this.publicBaseUrl}${task.fileUrl}`;
 
-      this.logger.log(
-        `🔍 Analyzing with public URL: ${publicImageUrl}`,
-      );
+      this.logger.log(`🔍 Analyzing: ${publicImageUrl}`);
+      const analysisResult = await this.aiService.analyzeVehicleDamage(publicImageUrl);
 
-      // AI анализ ажиллуулах
-      const analysisResult = await this.aiService.analyzeVehicleDamage(
-        publicImageUrl,
-      );
-
-      // Repair cost тооцоолох
-      const estimatedCost = this.aiService.estimateRepairCost(
-        analysisResult.damagedParts,
-      );
-
-      // Image-г update хийх
       image.aiAnalysisResult = analysisResult;
       image.aiConfidenceScore = analysisResult.overallConfidence;
       image.status = ImageStatus.ANALYZED;
       image.analyzedAt = new Date();
 
       await this.imageRepository.save(image);
-
-      this.logger.log(
-        `✅ Image ${task.imageId} analyzed. Severity: ${analysisResult.overallSeverity}, Confidence: ${analysisResult.overallConfidence}`,
-      );
+      this.logger.log(`✅ Image ${task.imageId} analyzed. Severity: ${analysisResult.overallSeverity}`);
     } catch (error) {
       task.retries++;
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const msg = error instanceof Error ? error.message : String(error);
 
       if (task.retries >= task.maxRetries) {
-        // Max retries дээр хүрсэн бол failed болгох
-        const image = await this.imageRepository.findOne({
-          where: { id: task.imageId },
-        });
-
+        const image = await this.imageRepository.findOne({ where: { id: task.imageId } });
         if (image) {
           image.status = ImageStatus.FAILED;
-          image.aiErrorMessage = `Analysis failed after ${task.maxRetries} attempts: ${errorMessage}`;
+          image.aiErrorMessage = `Failed after ${task.maxRetries} attempts: ${msg}`;
           await this.imageRepository.save(image);
         }
-
-        this.logger.error(
-          `❌ Image ${task.imageId} analysis failed permanently: ${errorMessage}`,
-        );
+        this.logger.error(`❌ Image ${task.imageId} permanently failed: ${msg}`);
       } else {
-        // Retry өмнөх байхадлыг буцаах
         this.queue.push(task);
-        this.logger.warn(
-          `⚠️  Image ${task.imageId} analysis failed. Retrying... (${task.retries}/${task.maxRetries})`,
-        );
+        this.logger.warn(`⚠️  Image ${task.imageId} retry ${task.retries}/${task.maxRetries}`);
       }
     }
   }
 
-  /**
-   * Get queue status
-   */
   getQueueStatus(): { size: number; processing: boolean } {
-    return {
-      size: this.queue.length,
-      processing: this.processing,
-    };
-  }
-
-  /**
-   * Retry failed image analysis
-   */
-  async retryImageAnalysis(imageId: string): Promise<void> {
-    const image = await this.imageRepository.findOne({
-      where: { id: imageId },
-    });
-
-    if (!image) {
-      throw new Error(`Image not found: ${imageId}`);
-    }
-
-    image.status = ImageStatus.PROCESSING;
-    await this.imageRepository.save(image);
-
-    await this.enqueueImageAnalysis(imageId, image.fileUrl);
-
-    this.logger.log(`🔄 Retrying analysis for image: ${imageId}`);
+    return { size: this.queue.length, processing: this.processing };
   }
 }

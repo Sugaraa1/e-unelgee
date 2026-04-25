@@ -1,4 +1,8 @@
-// src/images/images.service.ts
+// KEY FIXES:
+//   1. PUBLIC_BASE_URL replaces localhost for OpenAI access
+//   2. DamageAssessment query: use claimId column directly (not relation)
+//   3. Prevent duplicate DamageAssessment records
+//   4. Retry endpoint support
 import {
   Injectable,
   NotFoundException,
@@ -20,7 +24,6 @@ import {
   AssessmentSource,
 } from '../damage-assessment/entities/damage-assessment.entity';
 import { User } from '../users/entities/user.entity';
-
 import { AIService } from '../ai/ai.service';
 import { PricingService } from '../pricing/pricing.service';
 
@@ -40,13 +43,11 @@ export interface UploadResult {
 export class ImagesService {
   private readonly logger = new Logger(ImagesService.name);
   private readonly maxFileSize = 5 * 1024 * 1024; // 5MB
-  private readonly allowedMimeTypes = [
-    'image/jpeg',
-    'image/png',
-    'image/webp',
-  ];
-  // ✅ Retry-г const болгон нэг газарт тодорхойлно
+  private readonly allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
   private readonly MAX_RETRIES = 3;
+
+  // FIX: Cache publicBaseUrl at startup, not per-request
+  private readonly publicBaseUrl: string;
 
   constructor(
     @InjectRepository(Image)
@@ -61,33 +62,48 @@ export class ImagesService {
     private readonly configService: ConfigService,
     private readonly aiService: AIService,
     private readonly pricingService: PricingService,
-  ) {}
+  ) {
+    // FIX: Build public base URL once at startup
+    this.publicBaseUrl = this.buildPublicBaseUrl();
+    this.logger.log(`🌐 Public base URL configured: ${this.publicBaseUrl}`);
+  }
 
-  /**
-   * Upload image — шууд хариулна, background-д AI ажиллуулна
-   */
+  // ── FIX: Build reliable public URL ─────────────────────────────
+  private buildPublicBaseUrl(): string {
+    const explicit = this.configService.get<string>('PUBLIC_BASE_URL');
+    if (explicit && explicit.startsWith('http')) {
+      return explicit.replace(/\/$/, ''); // strip trailing slash
+    }
+
+    const port = this.configService.get<number>('PORT', 3000);
+    const env = this.configService.get<string>('NODE_ENV', 'development');
+
+    if (env === 'production') {
+      throw new Error('PUBLIC_BASE_URL must be set in production environment');
+    }
+
+    return `http://localhost:${port}`;
+  }
+
+  // ── UPLOAD ──────────────────────────────────────────────────────
   async uploadImage(
     file: Express.Multer.File,
     claimId: string,
     user: User,
   ): Promise<UploadResult> {
     if (!file) {
-      throw new BadRequestException(
-        'Файл байхгүй байна. "file" талбар шаардлагатай.',
-      );
+      throw new BadRequestException('Файл байхгүй байна. "file" талбар шаардлагатай.');
     }
 
     if (file.size > this.maxFileSize) {
       this.deleteFileFromDisk(file.path);
-      throw new BadRequestException(
-        `Файлын хэмжээ ${this.maxFileSize / 1024 / 1024}MB-с хэтэрсэн.`,
-      );
+      throw new BadRequestException(`Файлын хэмжээ ${this.maxFileSize / 1024 / 1024}MB-с хэтэрсэн.`);
     }
 
     if (!this.allowedMimeTypes.includes(file.mimetype)) {
       this.deleteFileFromDisk(file.path);
       throw new BadRequestException(
-        `${file.mimetype} төрлийн файл зөвшөөрөгдөхгүй. Зөвшөөрөгдсөн: ${this.allowedMimeTypes.join(', ')}`,
+        `${file.mimetype} төрлийн файл зөвшөөрөгдөхгүй.`,
       );
     }
 
@@ -103,9 +119,7 @@ export class ImagesService {
 
     if (claim.submittedById !== user.id) {
       this.deleteFileFromDisk(file.path);
-      throw new ForbiddenException(
-        'Энэ claim-д зураг нэмэх эрх байхгүй байна.',
-      );
+      throw new ForbiddenException('Энэ claim-д зураг нэмэх эрх байхгүй байна.');
     }
 
     const fileUrl = `/uploads/${file.filename}`;
@@ -118,22 +132,17 @@ export class ImagesService {
       fileSize: file.size,
       imageType: ImageType.OTHER,
       status: ImageStatus.PENDING,
-      // ✅ aiRetryCount-г тодорхой 0-ээс эхлүүлнэ
       aiRetryCount: 0,
       claimId,
       uploadedById: user.id,
     });
 
     const saved = await this.imageRepository.save(image);
-    this.logger.log(
-      `✓ Upload: ${saved.fileName} → Claim: ${claimId} → User: ${user.email}`,
-    );
+    this.logger.log(`✓ Upload: ${saved.fileName} → Claim: ${claimId}`);
 
-    // Fire and forget
+    // Fire-and-forget background processing
     this.processImageAsync(saved.id).catch((err) => {
-      this.logger.error(
-        `Background processing failed for image ${saved.id}: ${err.message}`,
-      );
+      this.logger.error(`Background processing failed for image ${saved.id}: ${err.message}`);
     });
 
     return {
@@ -149,9 +158,38 @@ export class ImagesService {
     };
   }
 
-  /**
-   * Background processing pipeline
-   */
+  // ── RETRY (new endpoint support) ───────────────────────────────
+  async retryAnalysis(imageId: string, user: User): Promise<{ message: string }> {
+    const image = await this.imageRepository.findOne({
+      where: { id: imageId },
+      relations: ['claim'],
+    });
+
+    if (!image) throw new NotFoundException(`ID: ${imageId} зураг олдсонгүй`);
+
+    if (image.claim?.submittedById !== user.id) {
+      throw new ForbiddenException('Энэ зурагт хандах эрх байхгүй');
+    }
+
+    if (image.status !== ImageStatus.FAILED) {
+      throw new BadRequestException('Зөвхөн failed статустай зургийг retry хийж болно');
+    }
+
+    // Reset for retry
+    await this.imageRepository.update(imageId, {
+      status: ImageStatus.PENDING,
+      aiRetryCount: 0,
+      aiErrorMessage: null,
+    });
+
+    this.processImageAsync(imageId).catch((err) => {
+      this.logger.error(`Retry failed for image ${imageId}: ${err.message}`);
+    });
+
+    return { message: 'Дахин шинжилгээ эхэллээ' };
+  }
+
+  // ── BACKGROUND PROCESSING ───────────────────────────────────────
   private async processImageAsync(imageId: string): Promise<void> {
     let image: Image | null = null;
 
@@ -161,85 +199,57 @@ export class ImagesService {
         relations: ['claim', 'claim.vehicle'],
       });
 
-      if (!image) {
-        throw new NotFoundException(`Image ${imageId} not found`);
-      }
+      if (!image) throw new NotFoundException(`Image ${imageId} not found`);
 
       image.status = ImageStatus.PROCESSING;
       await this.imageRepository.save(image);
-      this.logger.log(`→ Image ${imageId}: PROCESSING`);
 
-      const publicImageUrl = this.constructFullImageUrl(image.fileUrl);
+      // FIX: Use publicBaseUrl (not localhost) so OpenAI can reach the image
+      const publicImageUrl = image.fileUrl.startsWith('http')
+        ? image.fileUrl
+        : `${this.publicBaseUrl}${image.fileUrl}`;
 
-      this.logger.log(`→ AI шинжилгээ эхэлж байна: ${imageId}`);
-      const aiResult = await this.aiService.analyzeVehicleDamage(
-        publicImageUrl,
-      );
+      this.logger.log(`→ AI analyzing: ${publicImageUrl}`);
+      const aiResult = await this.aiService.analyzeVehicleDamage(publicImageUrl);
 
-      if (
-        !aiResult ||
-        !aiResult.damagedParts ||
-        aiResult.damagedParts.length === 0
-      ) {
+      if (!aiResult?.damagedParts?.length) {
         throw new Error('AI шинжилгээ гэмтэл илрүүлсэнгүй');
       }
 
-      this.logger.log(
-        `✓ AI дууслаа: ${aiResult.damagedParts.length} гэмтэл илэрлээ`,
-      );
+      const estimate = this.pricingService.calculateEstimate(aiResult.damagedParts);
 
-      const estimate = this.pricingService.calculateEstimate(
-        aiResult.damagedParts,
-      );
-
-      // ✅ Бүх өөрчлөлтийг нэг save-д хийнэ
       image.aiAnalysisResult = aiResult;
       image.aiConfidenceScore = aiResult.overallConfidence;
       image.status = ImageStatus.ANALYZED;
       image.analyzedAt = new Date();
       await this.imageRepository.save(image);
-      this.logger.log(`✓ Image ${imageId} хадгалагдлаа`);
 
       await this.updateDamageAssessment(image, aiResult, estimate);
       await this.updateClaimTotalCost(image.claimId);
 
-      this.logger.log(`✅ Image ${imageId} бүрэн боловсруулагдлаа`);
+      this.logger.log(`✅ Image ${imageId} processed successfully`);
     } catch (error) {
-      this.logger.error(
-        `❌ Image ${imageId} алдаа: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      if (image) {
-        await this.handleProcessingError(
-          image,
-          error instanceof Error ? error : new Error(String(error)),
-        );
-      }
+      this.logger.error(`❌ Image ${imageId} error: ${error instanceof Error ? error.message : String(error)}`);
+      if (image) await this.handleProcessingError(image, error instanceof Error ? error : new Error(String(error)));
     }
   }
 
-  /**
-   * DamageAssessment үүсгэх / шинэчлэх
-   */
-  private async updateDamageAssessment(
-    image: Image,
-    aiResult: any,
-    estimate: any,
-  ): Promise<void> {
+  // ── FIX: DamageAssessment - use claimId column directly ────────
+  private async updateDamageAssessment(image: Image, aiResult: any, estimate: any): Promise<void> {
     try {
+      // FIX: Query by claimId column, NOT by relation object
       let assessment = await this.damageAssessmentRepository.findOne({
-        where: { claim: { id: image.claimId } },
+        where: { claimId: image.claimId },
       });
 
       if (!assessment) {
+        // FIX: Create with claimId, not claim relation object
         assessment = this.damageAssessmentRepository.create({
-          claim: { id: image.claimId } as any,
+          claimId: image.claimId,
           status: AssessmentStatus.PENDING,
           source: AssessmentSource.AI_ONLY,
           aiRetryCount: 0,
         });
-        this.logger.log(
-          `→ Шинэ DamageAssessment үүслээ: claim ${image.claimId}`,
-        );
       }
 
       assessment.damagedParts = aiResult.damagedParts;
@@ -247,82 +257,48 @@ export class ImagesService {
       assessment.aiEstimatedTotalCost = estimate.totalCost.recommended;
       assessment.estimatedPartsCost = estimate.partsCost.recommended;
       assessment.estimatedLaborCost = estimate.laborCost.recommended;
-      assessment.aiSummary = this.generateAssessmentSummary(
-        aiResult,
-        estimate,
-      );
+      assessment.aiSummary = this.generateAssessmentSummary(aiResult, estimate);
       assessment.aiProcessedAt = new Date();
       assessment.status = AssessmentStatus.AI_COMPLETE;
+      assessment.aiRawResponse = aiResult;
 
       await this.damageAssessmentRepository.save(assessment);
-      this.logger.log(
-        `✓ DamageAssessment хадгалагдлаа: ₮${assessment.aiEstimatedTotalCost?.toLocaleString()}`,
-      );
+      this.logger.log(`✓ DamageAssessment saved: ₮${assessment.aiEstimatedTotalCost?.toLocaleString()}`);
     } catch (error) {
-      this.logger.error(
-        `DamageAssessment хадгалахад алдаа: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.error(`DamageAssessment save error: ${error instanceof Error ? error.message : String(error)}`);
       throw error;
     }
   }
 
-  /**
-   * Claim-ийн нийт засварын зардал шинэчлэх
-   */
+  // ── Update claim estimated cost ─────────────────────────────────
   private async updateClaimTotalCost(claimId: string): Promise<void> {
     try {
+      // FIX: use claimId column directly
       const assessment = await this.damageAssessmentRepository.findOne({
-        where: { claim: { id: claimId } },
+        where: { claimId },
       });
 
-      if (!assessment?.aiEstimatedTotalCost) {
-        this.logger.warn(
-          `Claim ${claimId}-д DamageAssessment зардал олдсонгүй`,
-        );
-        return;
-      }
+      if (!assessment?.aiEstimatedTotalCost) return;
 
-      const claim = await this.claimRepository.findOne({
-        where: { id: claimId },
+      await this.claimRepository.update(claimId, {
+        estimatedRepairCost: assessment.aiEstimatedTotalCost,
       });
-
-      if (claim) {
-        claim.estimatedRepairCost = assessment.aiEstimatedTotalCost;
-        await this.claimRepository.save(claim);
-        this.logger.log(
-          `✓ Claim ${claimId} зардал: ₮${assessment.aiEstimatedTotalCost.toLocaleString()}`,
-        );
-      }
     } catch (error) {
-      this.logger.error(
-        `Claim зардал шинэчлэхэд алдаа: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      throw error;
+      this.logger.error(`Claim cost update error: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  /**
-   * Алдаа гарсан үед retry логик
-   * ✅ aiRetryCount-г зөв хадгална
-   */
-  private async handleProcessingError(
-    image: Image,
-    error: Error,
-  ): Promise<void> {
+  // ── Error / retry handler ───────────────────────────────────────
+  private async handleProcessingError(image: Image, error: Error): Promise<void> {
     if (!image) return;
 
     try {
-      // ✅ DB-с шинэчилсэн утгыг уншина — stalе data-аас зайлсхийнэ
-      const freshImage = await this.imageRepository.findOne({
-        where: { id: image.id },
-      });
-
+      const freshImage = await this.imageRepository.findOne({ where: { id: image.id } });
       if (!freshImage) return;
 
       const currentRetries = freshImage.aiRetryCount ?? 0;
 
       if (currentRetries < this.MAX_RETRIES) {
-        // ✅ Нэмэгдсэн retry тоог болон статусыг хамт хадгална
         const nextRetry = currentRetries + 1;
         const backoffMs = Math.pow(2, nextRetry) * 5000; // 10s, 20s, 40s
 
@@ -332,100 +308,37 @@ export class ImagesService {
           aiRetryCount: nextRetry,
         });
 
-        this.logger.log(
-          `⏰ Retry ${nextRetry}/${this.MAX_RETRIES} — ${backoffMs / 1000}с-д дахин оролдоно`,
-        );
+        this.logger.log(`⏰ Auto-retry ${nextRetry}/${this.MAX_RETRIES} in ${backoffMs / 1000}s`);
 
         setTimeout(() => {
           this.processImageAsync(freshImage.id).catch((err) => {
-            this.logger.error(
-              `Retry ${nextRetry} алдаа (${freshImage.id}): ${err instanceof Error ? err.message : String(err)}`,
-            );
+            this.logger.error(`Auto-retry ${nextRetry} failed (${freshImage.id}): ${err.message}`);
           });
         }, backoffMs);
       } else {
-        // Max retry хүрсэн — бүрмөсөн FAILED болгоно
         await this.imageRepository.update(freshImage.id, {
           status: ImageStatus.FAILED,
           aiErrorMessage: `${this.MAX_RETRIES} оролдлогын дараа амжилтгүй: ${error.message}`,
           aiRetryCount: currentRetries,
         });
-
-        this.logger.error(
-          `Max retry (${this.MAX_RETRIES}) хүрсэн — image ${freshImage.id} FAILED`,
-        );
+        this.logger.error(`Max retries (${this.MAX_RETRIES}) reached for image ${freshImage.id}`);
       }
     } catch (err) {
-      this.logger.error(
-        `handleProcessingError дотор алдаа (${image?.id}): ${err instanceof Error ? err.message : String(err)}`,
-      );
+      this.logger.error(`handleProcessingError internal error: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  /**
-   * AI үнэлгээний хураангуй текст үүсгэх
-   */
   private generateAssessmentSummary(aiResult: any, estimate: any): string {
     const partsCount = aiResult.damagedParts?.length || 0;
-    const severity = aiResult.overallSeverity || 'unknown';
-    const confidence = (aiResult.overallConfidence * 100).toFixed(0);
-    const recommended = this.pricingService.formatCurrency(
-      estimate.totalCost.recommended,
-    );
-
-    return `
-AI Assessment:
-- Гэмтсэн хэсэг: ${partsCount}
-- Ноцтой байдал: ${severity}
-- AI итгэл: ${confidence}%
-- Санал болгосон зардал: ${recommended}
-- Огноо: ${new Date().toISOString()}
-
-Гэмтсэн хэсгүүд:
-${
-  aiResult.damagedParts
-    ?.map(
-      (part: any) =>
-        `• ${part.partName} (${part.severity}): ${part.damageType}`,
-    )
-    .join('\n') || 'N/A'
-}
-    `.trim();
+    const recommended = this.pricingService.formatCurrency(estimate.totalCost.recommended);
+    return `AI: ${partsCount} гэмтэл, ноцтой байдал: ${aiResult.overallSeverity}, итгэл: ${Math.round(aiResult.overallConfidence * 100)}%, зардал: ${recommended}`;
   }
 
-  /**
-   * Зургийн нийтийн URL үүсгэх
-   */
-  private constructFullImageUrl(relativePath: string): string {
-    if (relativePath.startsWith('http')) {
-      return relativePath;
-    }
-
-    const port = this.configService.get<number>('PORT', 3000);
-    const env = this.configService.get<string>('NODE_ENV', 'development');
-
-    if (env === 'production') {
-      const backendUrl = this.configService.get<string>('BACKEND_URL', '');
-      return `${backendUrl}${relativePath}`;
-    }
-
-    return `http://localhost:${port}${relativePath}`;
-  }
-
-  // ── Public methods ─────────────────────────────────────────
-
+  // ── Public methods ──────────────────────────────────────────────
   async getImagesByClaim(claimId: string, user: User): Promise<Image[]> {
-    const claim = await this.claimRepository.findOne({
-      where: { id: claimId },
-    });
-
-    if (!claim) {
-      throw new NotFoundException(`ID: ${claimId} claim олдсонгүй`);
-    }
-
-    if (claim.submittedById !== user.id) {
-      throw new ForbiddenException('Энэ claim-д хандах эрх байхгүй');
-    }
+    const claim = await this.claimRepository.findOne({ where: { id: claimId } });
+    if (!claim) throw new NotFoundException(`ID: ${claimId} claim олдсонгүй`);
+    if (claim.submittedById !== user.id) throw new ForbiddenException('Хандах эрх байхгүй');
 
     return this.imageRepository.find({
       where: { claimId },
@@ -434,48 +347,27 @@ ${
   }
 
   async getImageById(id: string, user: User): Promise<Image> {
-    const image = await this.imageRepository.findOne({
-      where: { id },
-      relations: ['claim'],
-    });
-
-    if (!image) {
-      throw new NotFoundException(`ID: ${id} зураг олдсонгүй`);
-    }
-
-    if (image.claim?.submittedById !== user.id) {
-      throw new ForbiddenException('Энэ зурагт хандах эрх байхгүй');
-    }
-
+    const image = await this.imageRepository.findOne({ where: { id }, relations: ['claim'] });
+    if (!image) throw new NotFoundException(`ID: ${id} зураг олдсонгүй`);
+    if (image.claim?.submittedById !== user.id) throw new ForbiddenException('Хандах эрх байхгүй');
     return image;
   }
 
-  async deleteImage(
-    id: string,
-    user: User,
-  ): Promise<{ message: string }> {
+  async deleteImage(id: string, user: User): Promise<{ message: string }> {
     const image = await this.getImageById(id, user);
-
     this.deleteFileFromDisk(image.filePath);
     await this.imageRepository.delete(id);
-
-    this.logger.log(`Зураг устгагдлаа: ${image.fileName}`);
-
     return { message: `Зураг "${image.originalName}" амжилттай устгагдлаа` };
   }
 
   private deleteFileFromDisk(filePath: string): void {
     try {
-      const absolutePath = filePath.startsWith('.')
-        ? join(process.cwd(), filePath)
-        : filePath;
-
+      const absolutePath = filePath.startsWith('.') ? join(process.cwd(), filePath) : filePath;
       if (existsSync(absolutePath)) {
         unlinkSync(absolutePath);
-        this.logger.debug(`Файл устгагдлаа: ${absolutePath}`);
       }
     } catch (err) {
-      this.logger.warn(`Файл устгахад алдаа: ${filePath}`, err);
+      this.logger.warn(`File delete error: ${filePath}`, err);
     }
   }
 }

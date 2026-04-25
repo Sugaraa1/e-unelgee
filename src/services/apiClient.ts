@@ -1,21 +1,27 @@
+// FIX: Use env variable properly, never hardcode IP addresses
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { STORAGE_KEYS, ENDPOINTS } from '../constants';
 
-// ── Base URL from env ──────────────────────────────────────────
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.100:3000/api/v1';
+// FIX: Validate BASE_URL at startup, never silently fall back to wrong IP
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
-// ── Create Axios instance ─────────────────────────────────────
+if (!BASE_URL) {
+  console.error(
+    '[apiClient] EXPO_PUBLIC_API_URL is not set! Create a .env file with EXPO_PUBLIC_API_URL=http://YOUR_LOCAL_IP:3000/api/v1',
+  );
+}
+
 const apiClient: AxiosInstance = axios.create({
-  baseURL: BASE_URL,
-  timeout: 15000,
+  baseURL: BASE_URL ?? 'http://localhost:3000/api/v1',
+  timeout: 30000, // 30s for image uploads
   headers: {
     'Content-Type': 'application/json',
     Accept: 'application/json',
   },
 });
 
-// ── Request interceptor — attach token ────────────────────────
+// ── Request interceptor ────────────────────────────────────────
 apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
     const token = await SecureStore.getItemAsync(STORAGE_KEYS.ACCESS_TOKEN);
@@ -39,12 +45,29 @@ const processQueue = (error: unknown, token: string | null) => {
   failedQueue = [];
 };
 
-apiClient.interceptors.response.use(
-  (response: any) => response,
-  async (error: AxiosError) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+const clearAuthAndReject = async (error: unknown) => {
+  await Promise.all([
+    SecureStore.deleteItemAsync(STORAGE_KEYS.ACCESS_TOKEN),
+    SecureStore.deleteItemAsync(STORAGE_KEYS.REFRESH_TOKEN),
+    SecureStore.deleteItemAsync(STORAGE_KEYS.USER),
+  ]);
+  return Promise.reject(error);
+};
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const originalRequest = error.config as InternalAxiosRequestConfig & {
+      _retry?: boolean;
+    };
+
+    // Only attempt refresh on 401, and not on auth endpoints themselves
+    const isAuthEndpoint =
+      originalRequest?.url?.includes('/auth/login') ||
+      originalRequest?.url?.includes('/auth/register') ||
+      originalRequest?.url?.includes('/auth/refresh');
+
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -59,29 +82,34 @@ apiClient.interceptors.response.use(
 
       try {
         const refreshToken = await SecureStore.getItemAsync(STORAGE_KEYS.REFRESH_TOKEN);
-        const userId = await SecureStore.getItemAsync(STORAGE_KEYS.USER);
+        const userJson = await SecureStore.getItemAsync(STORAGE_KEYS.USER);
 
-        if (!refreshToken || !userId) throw new Error('No refresh token');
+        if (!refreshToken || !userJson) {
+          return clearAuthAndReject(error);
+        }
 
-        const { data } = await axios.post(`${BASE_URL}${ENDPOINTS.AUTH.REFRESH}`, {
-          refreshToken,
-          userId: JSON.parse(userId).id,
-        });
+        const user = JSON.parse(userJson);
+        const { data } = await axios.post(
+          `${BASE_URL}${ENDPOINTS.AUTH.REFRESH}`,
+          { refreshToken, userId: user.id },
+        );
 
-        const newToken = data.data.accessToken;
-        await SecureStore.setItemAsync(STORAGE_KEYS.ACCESS_TOKEN, newToken);
-        await SecureStore.setItemAsync(STORAGE_KEYS.REFRESH_TOKEN, data.data.refreshToken);
+        const newAccessToken = data.data?.accessToken ?? data.accessToken;
+        const newRefreshToken = data.data?.refreshToken ?? data.refreshToken;
 
-        processQueue(null, newToken);
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        if (!newAccessToken) return clearAuthAndReject(error);
+
+        await SecureStore.setItemAsync(STORAGE_KEYS.ACCESS_TOKEN, newAccessToken);
+        if (newRefreshToken) {
+          await SecureStore.setItemAsync(STORAGE_KEYS.REFRESH_TOKEN, newRefreshToken);
+        }
+
+        processQueue(null, newAccessToken);
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
         return apiClient(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
-        // Clear storage on refresh failure → redirect to login
-        await SecureStore.deleteItemAsync(STORAGE_KEYS.ACCESS_TOKEN);
-        await SecureStore.deleteItemAsync(STORAGE_KEYS.REFRESH_TOKEN);
-        await SecureStore.deleteItemAsync(STORAGE_KEYS.USER);
-        return Promise.reject(refreshError);
+        return clearAuthAndReject(refreshError);
       } finally {
         isRefreshing = false;
       }

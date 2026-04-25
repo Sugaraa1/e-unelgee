@@ -186,7 +186,10 @@ export const CreateClaimScreen = ({ navigation }: Props) => {
         accidentLocation: form.accidentLocation.trim(),
         description:      form.description.trim(),
         // "YYYY-MM-DD" → ISO string
-        accidentDate:     new Date(form.accidentDate).toISOString(),
+        accidentDate: (() => {
+        const [year, month, day] = form.accidentDate.split('-').map(Number);
+        return new Date(Date.UTC(year, month - 1, day, 4, 0, 0)).toISOString(); // 04:00 UTC = 12:00 UB
+      })(),
       };
       await createClaim(payload);
       Alert.alert('Амжилттай', 'Ослын мэдэгдэл амжилттай илгээгдлээ.', [

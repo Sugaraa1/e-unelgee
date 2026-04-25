@@ -16,6 +16,7 @@ import { uploadClaimImage, getImageUrl, UploadedImage } from '../../services/ima
 import { usePollingImages } from '../../hooks/usePollingImages';
 import { StatusBadge } from '../../components/StatusBadge';
 import type { Claim, ClaimsStackParamList } from '../../types';
+import { retryImageAnalysis } from '../../services/imagesService';
 
 type Props = {
   navigation: NativeStackNavigationProp<ClaimsStackParamList, 'ClaimDetail'>;
@@ -331,9 +332,15 @@ export const ClaimDetailScreen = ({ navigation, route }: Props) => {
   ]);
 
   const handleRetry = async (id: string) => {
-    try { await refresh(); } catch { Alert.alert('Алдаа', 'Дахин оролдоход алдаа гарлаа'); }
-  };
-
+  try {
+    await retryImageAnalysis(id);
+    await refresh();
+    Alert.alert('Амжилттай', 'AI шинжилгээ дахин эхэллээ');
+  } catch (err: any) {
+    const msg = err?.response?.data?.message ?? 'Retry амжилтгүй болсон';
+    Alert.alert('Алдаа', Array.isArray(msg) ? msg.join('\n') : msg);
+  }
+};
   const processingCount = images.filter((i) => i.status === 'pending' || i.status === 'processing').length;
   const analyzedCount   = images.filter((i) => i.status === 'analyzed').length;
   const progressPct     = images.length > 0 ? Math.round((analyzedCount / images.length) * 100) : 0;

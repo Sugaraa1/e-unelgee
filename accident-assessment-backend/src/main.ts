@@ -1,29 +1,39 @@
-
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { NestExpressApplication } from '@nestjs/platform-express';  // ← ШИНЭ
-import { join } from 'path';                                         // ← ШИНЭ
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
- 
+
 async function bootstrap() {
-  // ── NestExpressApplication type ашиглана ─────────────────────
+  const logger = new Logger('Bootstrap');
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService);
- 
+
   const apiPrefix = configService.get<string>('API_PREFIX', 'api/v1');
+  const isProduction = configService.get<string>('NODE_ENV') === 'production';
+
   app.setGlobalPrefix(apiPrefix);
- 
-  const origins = configService.get<string>('CORS_ORIGINS', '').split(',');
+
+  // ── CORS ──────────────────────────────────────────────────────
+  // FIX: parse comma-separated origins safely; never use empty string as wildcard
+  const rawOrigins = configService.get<string>('CORS_ORIGINS', '');
+  const allowedOrigins = rawOrigins
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
   app.enableCors({
-    origin: origins,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    origin: allowedOrigins.length > 0 ? allowedOrigins : false,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
     credentials: true,
   });
- 
+
+  // ── Global Pipes ───────────────────────────────────────────────
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -32,23 +42,26 @@ async function bootstrap() {
       transformOptions: { enableImplicitConversion: true },
     }),
   );
- 
+
+  // ── Filters & Interceptors ─────────────────────────────────────
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(new TransformInterceptor());
- 
-  // ── 🆕 Static files serve ─────────────────────────────────────
-  // /uploads/ route руу хандахад ./uploads фолдерын файлуудыг буцаана
-  // Жишэ: GET http://localhost:3000/uploads/uuid.jpg
+
+  // ── Static Files ───────────────────────────────────────────────
   app.useStaticAssets(join(__dirname, '..', 'uploads'), {
     prefix: '/uploads/',
+    // Cache static files for 1 day
+    setHeaders: (res) => {
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+    },
   });
- 
-  // ── 🆕 Multer payload limit (5MB + overhead) ──────────────────
-  // Express-ийн default limit 100kb тул 10MB болгоно
+
+  // ── Body limits ────────────────────────────────────────────────
   app.use(require('express').json({ limit: '10mb' }));
   app.use(require('express').urlencoded({ limit: '10mb', extended: true }));
- 
-  if (configService.get<string>('NODE_ENV') !== 'production') {
+
+  // ── Swagger (non-production only) ──────────────────────────────
+  if (!isProduction) {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('Accident Assessment API')
       .setDescription('AI-powered vehicle accident assessment backend')
@@ -58,19 +71,22 @@ async function bootstrap() {
         'access-token',
       )
       .build();
- 
+
     const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup(`${apiPrefix}/docs`, app, document, {
       swaggerOptions: { persistAuthorization: true },
     });
   }
- 
+
   const port = configService.get<number>('PORT', 3000);
-  await app.listen(port);
-  console.log(`\n🚀 Server running on: http://localhost:${port}/${apiPrefix}`);
-  console.log(`📄 Swagger docs:      http://localhost:${port}/${apiPrefix}/docs`);
-  console.log(`🖼️  Static uploads:   http://localhost:${port}/uploads/\n`);
+  await app.listen(port, '0.0.0.0');
+
+  const publicBaseUrl = configService.get<string>('PUBLIC_BASE_URL', `http://localhost:${port}`);
+  logger.log(`🚀 Server running on: ${publicBaseUrl}/${apiPrefix}`);
+  if (!isProduction) {
+    logger.log(`📄 Swagger docs: ${publicBaseUrl}/${apiPrefix}/docs`);
+  }
+  logger.log(`🖼️  Static uploads: ${publicBaseUrl}/uploads/`);
 }
- 
+
 bootstrap();
- 
