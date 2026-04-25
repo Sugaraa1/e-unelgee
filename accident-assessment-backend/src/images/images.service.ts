@@ -205,9 +205,12 @@ export class ImagesService {
       await this.imageRepository.save(image);
 
       // FIX: Use publicBaseUrl (not localhost) so OpenAI can reach the image
-      const localFilePath = image.filePath;
-      this.logger.log(`→ AI analyzing (local): ${localFilePath}`);
-      const aiResult = await this.aiService.analyzeVehicleDamage(localFilePath);
+      const absolutePath = image.filePath.startsWith('/')
+      ? image.filePath
+      : require('path').join(process.cwd(), image.filePath);
+
+    this.logger.log(`→ AI analyzing (local): ${absolutePath}`);
+    const aiResult = await this.aiService.analyzeVehicleDamage(absolutePath);
 
       if (!aiResult?.damagedParts?.length) {
         throw new Error('AI шинжилгээ гэмтэл илрүүлсэнгүй');

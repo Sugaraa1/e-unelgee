@@ -76,12 +76,29 @@ export class AIService {
     try {
       this.logger.log(`🔍 Analyzing image: ${imageUrl}`);
 
-      // Зургийг base64 болгох
-      const { data: base64Data, mimeType } = await this.urlToBase64(imageUrl);
+      // Local file эсвэл URL-г base64 болгох
+      let base64Data: string;
+      let mimeType: string;
+
+      if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+        const result = await this.urlToBase64(imageUrl);
+        base64Data = result.data;
+        mimeType = result.mimeType;
+      } else {
+        const fs = require('fs');
+        const path = require('path');
+        const absPath = imageUrl.startsWith('/')
+          ? imageUrl
+          : path.join(process.cwd(), imageUrl);
+        const ext = path.extname(absPath).toLowerCase();
+        mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
+        base64Data = fs.readFileSync(absPath).toString('base64');
+        this.logger.log(`📁 Local file уншлаа: ${absPath}`);
+      }
 
       // Gemini Flash загвар ашиглах (үнэгүй)
       const model = this.genAI.getGenerativeModel({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-flash',
         safetySettings: [
           {
             category: HarmCategory.HARM_CATEGORY_HARASSMENT,
