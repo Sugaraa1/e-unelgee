@@ -14,7 +14,6 @@ export interface DashboardStats {
   avgClaimAmount: number;
 }
 
-// ✅ Backend-ийн getQuickStats()-тай таарсан interface
 export interface QuickStats {
   todayClaims: number;
   weekClaims: number;
@@ -39,9 +38,8 @@ export interface DamageTypeStats {
 }
 
 export interface HighRiskClaimSummary {
-  // ✅ backend AdminService-с ирэх field нэрс
   id: string;
-  claimId?: string;          // backward compat
+  claimId?: string;
   claimNumber: string;
   vehicleInfo: string;
   riskLevel: 'low' | 'medium' | 'high';
@@ -50,75 +48,89 @@ export interface HighRiskClaimSummary {
   createdAt: string;
 }
 
-// ✅ flags нь string[] — object биш
 export interface FraudAlert {
   id: string;
-  claimId?: string;         // backward compat
+  claimId?: string;
   claimNumber: string;
   suspiciousLevel: 'medium' | 'high';
   flags: string[];
   createdAt: string;
 }
 
-export interface AdminDashboardResponse<T> {
-  success: boolean;
-  data: T;
+// ── Helper: response-г зөв задлах ────────────────────────────
+// TransformInterceptor болон AdminController хоёулаа
+// { success, data } гэж wrap хийдэг тул давхар болно:
+// axios response.data → { success, data: { success, data: realData } }
+// Эсвэл зөвхөн нэг давхар:
+// axios response.data → { success, data: realData }
+function extractData<T>(responseData: any): T {
+  if (!responseData) return responseData as T;
+
+  // Давхар wrap: { success, data: { success, data: real } }
+  if (
+    responseData.data !== undefined &&
+    typeof responseData.data === 'object' &&
+    responseData.data !== null &&
+    'data' in responseData.data
+  ) {
+    return responseData.data.data as T;
+  }
+
+  // Нэг давхар: { success, data: real }
+  if (responseData.data !== undefined) {
+    return responseData.data as T;
+  }
+
+  return responseData as T;
 }
 
 class AdminService {
   async getDashboardStats(): Promise<DashboardStats> {
-    const response = await apiClient.get<AdminDashboardResponse<DashboardStats>>(
-      '/admin/stats',
-    );
-    return response.data.data;
+    const response = await apiClient.get('/admin/stats');
+    return extractData<DashboardStats>(response.data);
   }
 
   async getQuickStats(): Promise<QuickStats> {
-    const response = await apiClient.get<AdminDashboardResponse<QuickStats>>(
-      '/admin/quick-stats',
-    );
-    return response.data.data;
+    const response = await apiClient.get('/admin/quick-stats');
+    return extractData<QuickStats>(response.data);
   }
 
   async getClaimsByStatus(): Promise<ClaimsByStatus[]> {
-    const response = await apiClient.get<AdminDashboardResponse<ClaimsByStatus[]>>(
-      '/admin/claims-by-status',
-    );
-    return response.data.data;
+    const response = await apiClient.get('/admin/claims-by-status');
+    const data = extractData<ClaimsByStatus[]>(response.data);
+    return Array.isArray(data) ? data : [];
   }
 
   async getClaimsByDay(days: number = 7): Promise<ClaimsByDay[]> {
-    const response = await apiClient.get<AdminDashboardResponse<ClaimsByDay[]>>(
-      '/admin/claims-by-day',
-      { params: { days } },
-    );
-    return response.data.data;
+    const response = await apiClient.get('/admin/claims-by-day', {
+      params: { days },
+    });
+    const data = extractData<ClaimsByDay[]>(response.data);
+    return Array.isArray(data) ? data : [];
   }
 
   async getTopDamageTypes(limit: number = 10): Promise<DamageTypeStats[]> {
-    const response = await apiClient.get<AdminDashboardResponse<DamageTypeStats[]>>(
-      '/admin/top-damage-types',
-      { params: { limit } },
-    );
-    return response.data.data;
+    const response = await apiClient.get('/admin/top-damage-types', {
+      params: { limit },
+    });
+    const data = extractData<DamageTypeStats[]>(response.data);
+    return Array.isArray(data) ? data : [];
   }
 
-  async getHighRiskClaims(
-    limit: number = 20,
-  ): Promise<HighRiskClaimSummary[]> {
-    const response = await apiClient.get<AdminDashboardResponse<HighRiskClaimSummary[]>>(
-      '/admin/high-risk-claims',
-      { params: { limit } },
-    );
-    return response.data.data;
+  async getHighRiskClaims(limit: number = 20): Promise<HighRiskClaimSummary[]> {
+    const response = await apiClient.get('/admin/high-risk-claims', {
+      params: { limit },
+    });
+    const data = extractData<HighRiskClaimSummary[]>(response.data);
+    return Array.isArray(data) ? data : [];
   }
 
   async getFraudAlerts(limit: number = 20): Promise<FraudAlert[]> {
-    const response = await apiClient.get<AdminDashboardResponse<FraudAlert[]>>(
-      '/admin/fraud-alerts',
-      { params: { limit } },
-    );
-    return response.data.data;
+    const response = await apiClient.get('/admin/fraud-alerts', {
+      params: { limit },
+    });
+    const data = extractData<FraudAlert[]>(response.data);
+    return Array.isArray(data) ? data : [];
   }
 
   async refreshDashboardData() {

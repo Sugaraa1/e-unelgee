@@ -25,16 +25,21 @@ import {
   InfoRow,
 } from '../../components/AdminDashboardComponents';
 
+// ── safeCall: алдаа барьж fallback буцаана ───────────────────
 async function safeCall<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
   try {
-    return await fn();
+    const result = await fn();
+    return result ?? fallback;
   } catch (e: any) {
-    console.warn('Admin API алдаа:', e?.response?.status, e?.message);
+    console.warn('[Admin] API алдаа:', e?.response?.status, e?.message);
+    if (__DEV__ && e?.response?.data) {
+      console.warn('[Admin] Response:', JSON.stringify(e.response.data, null, 2));
+    }
     return fallback;
   }
 }
 
-// ── FraudCard: component-ийн ГАДНА тодорхойлно ───────────────
+// ── FraudCard ─────────────────────────────────────────────────
 const FraudCard: React.FC<{ alert: FraudAlert }> = ({ alert }) => (
   <View
     style={[
@@ -47,7 +52,10 @@ const FraudCard: React.FC<{ alert: FraudAlert }> = ({ alert }) => (
       <View
         style={[
           styles.riskIndicator,
-          { backgroundColor: alert.suspiciousLevel === 'high' ? '#F44336' : '#FFC107' },
+          {
+            backgroundColor:
+              alert.suspiciousLevel === 'high' ? '#F44336' : '#FFC107',
+          },
         ]}
       />
     </View>
@@ -94,20 +102,30 @@ export const AdminDashboardScreen: React.FC = () => {
         safeCall(() => adminService.getFraudAlerts(15), []),
       ]);
 
+      if (__DEV__) {
+        console.log('[Admin] stats:', s);
+        console.log('[Admin] quickStats:', qs);
+        console.log('[Admin] claimsByStatus:', cbs);
+        console.log('[Admin] highRisk:', hr);
+        console.log('[Admin] fraudAlerts:', fa);
+      }
+
       setStats(s);
       setQuickStats(qs);
       setClaimsByStatus(Array.isArray(cbs) ? cbs : []);
       setClaimsByDay(Array.isArray(cbd) ? cbd : []);
       setTopDamage(Array.isArray(td) ? td : []);
-      setHighRisk(Array.isArray(hr) ? hr : []); 
+      setHighRisk(Array.isArray(hr) ? hr : []);
       setFraudAlerts(Array.isArray(fa) ? fa : []);
 
-      if (!s && !qs && (!cbs || cbs.length === 0)) {
-        setError('Admin эрх шаардлагатай. Admin role-той хэрэглэгчээр нэвтэрнэ үү.');
+      if (!s && !qs) {
+        setError(
+          'Admin эрх шаардлагатай. Admin role-той хэрэглэгчээр нэвтэрнэ үү.',
+        );
       }
     } catch (err) {
       setError('Dashboard ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
-      console.error('Dashboard error:', err);
+      console.error('[Admin] Dashboard error:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -123,9 +141,17 @@ export const AdminDashboardScreen: React.FC = () => {
     fetchDashboardData();
   };
 
-  const formatCurrency = (amount: number) =>
-    `₮${(amount / 1000).toFixed(0)}K`;
+  // ── Мөнгөн дүн форматлах ─────────────────────────────────────
+  const formatCurrency = (amount: number): string => {
+    const n = Number(amount);
+    if (!n || isNaN(n)) return '₮0';
+    if (n >= 1_000_000_000) return `₮${(n / 1_000_000_000).toFixed(1)}B`;
+    if (n >= 1_000_000)     return `₮${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000)         return `₮${(n / 1_000).toFixed(0)}K`;
+    return `₮${n.toLocaleString()}`;
+  };
 
+  // ── Loading ──────────────────────────────────────────────────
   if (loading) {
     return (
       <View style={[styles.container, styles.centerContent]}>
@@ -135,7 +161,8 @@ export const AdminDashboardScreen: React.FC = () => {
     );
   }
 
-  if (error) {
+  // ── Error ────────────────────────────────────────────────────
+  if (error && !stats && !quickStats) {
     return (
       <View style={[styles.container, styles.centerContent]}>
         <Text style={styles.errorText}>{error}</Text>
@@ -146,14 +173,8 @@ export const AdminDashboardScreen: React.FC = () => {
     );
   }
 
-  // ✅ Null-safe array operations
-  const safeFraudAlerts = Array.isArray(fraudAlerts) ? fraudAlerts : [];
-  const safeHighRisk    = Array.isArray(highRisk) ? highRisk : [];
-  const safeTopDamage   = Array.isArray(topDamage) ? topDamage : [];
-  const safeClaimsByStatus = Array.isArray(claimsByStatus) ? claimsByStatus : [];
-
-  const highFraud = safeFraudAlerts.filter((a) => a.suspiciousLevel === 'high');
-  const medFraud  = safeFraudAlerts.filter((a) => a.suspiciousLevel === 'medium');
+  const highFraud = fraudAlerts.filter((a) => a.suspiciousLevel === 'high');
+  const medFraud  = fraudAlerts.filter((a) => a.suspiciousLevel === 'medium');
 
   return (
     <ScrollView
@@ -172,38 +193,56 @@ export const AdminDashboardScreen: React.FC = () => {
       {/* ── Үндсэн үзүүлэлтүүд ─────────────────────────────── */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>📊 Үндсэн үзүүлэлтүүд</Text>
-        <StatCard
-          label="Нийт claim"
-          value={stats?.totalClaims ?? 0}
-          icon="file-document"
-          color="#2196F3"
-          subtext={`${stats?.approvedClaims ?? 0} зөвшөөрөгдсөн`}
-        />
-        <StatCard
-          label="Зөвшөөрөгдсөн"
-          value={stats?.approvedClaims ?? 0}
-          icon="check-circle"
-          color="#4CAF50"
-          subtext={`${(
-            ((stats?.approvedClaims ?? 0) /
-              Math.max(stats?.totalClaims ?? 1, 1)) *
-            100
-          ).toFixed(0)}% зөвшөөрөлт`}
-        />
-        <StatCard
-          label="Нийт төлбөр"
-          value={formatCurrency(stats?.totalPayoutAmount ?? 0)}
-          icon="cash-multiple"
-          color="#FF9800"
-          subtext={`Дундаж: ${formatCurrency(stats?.avgClaimAmount ?? 0)}`}
-        />
-        <StatCard
-          label="Хүлээгдэж буй"
-          value={stats?.pendingClaims ?? 0}
-          icon="clock"
-          color="#FFC107"
-          subtext="Шалгалт хүлээж байна"
-        />
+        {stats ? (
+          <>
+            <StatCard
+              label="Нийт claim"
+              value={stats.totalClaims ?? 0}
+              icon="file-document"
+              color="#2196F3"
+              subtext={`${stats.approvedClaims ?? 0} зөвшөөрөгдсөн`}
+            />
+            <StatCard
+              label="Зөвшөөрөгдсөн"
+              value={stats.approvedClaims ?? 0}
+              icon="check-circle"
+              color="#4CAF50"
+              subtext={`${
+                (stats.totalClaims ?? 0) > 0
+                  ? (
+                      ((stats.approvedClaims ?? 0) / stats.totalClaims) *
+                      100
+                    ).toFixed(0)
+                  : 0
+              }% зөвшөөрөлт`}
+            />
+            <StatCard
+              label="Нийт төлбөр"
+              value={formatCurrency(stats.totalPayoutAmount ?? 0)}
+              icon="cash-multiple"
+              color="#FF9800"
+              subtext={`Дундаж: ${formatCurrency(stats.avgClaimAmount ?? 0)}`}
+            />
+            <StatCard
+              label="Хүлээгдэж буй"
+              value={stats.pendingClaims ?? 0}
+              icon="clock"
+              color="#FFC107"
+              subtext="Шалгалт хүлээж байна"
+            />
+            <StatCard
+              label="Нийт хэрэглэгч"
+              value={stats.totalUsers ?? 0}
+              icon="account-group"
+              color="#9C27B0"
+              subtext={`${stats.totalVehicles ?? 0} машин бүртгэлтэй`}
+            />
+          </>
+        ) : (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyText}>Статистик өгөгдөл байхгүй байна</Text>
+          </View>
+        )}
       </View>
 
       {/* ── Хурдан тойм ─────────────────────────────────────── */}
@@ -213,20 +252,26 @@ export const AdminDashboardScreen: React.FC = () => {
           <View style={styles.quickStatsGrid}>
             <View style={styles.quickStatCard}>
               <Text style={styles.quickStatLabel}>Өнөөдөр</Text>
-              <Text style={styles.quickStatValue}>{quickStats.todayClaims}</Text>
+              <Text style={styles.quickStatValue}>
+                {quickStats.todayClaims ?? 0}
+              </Text>
               <Text style={styles.quickStatSubtext}>claim</Text>
-              <Text style={[styles.quickStatValue, { fontSize: 14, marginTop: 4 }]}>
-                {formatCurrency(quickStats.todayPayout)}
+              <Text style={[styles.quickStatPayout]}>
+                {formatCurrency(quickStats.todayPayout ?? 0)}
               </Text>
             </View>
             <View style={styles.quickStatCard}>
               <Text style={styles.quickStatLabel}>7 хоног</Text>
-              <Text style={styles.quickStatValue}>{quickStats.weekClaims}</Text>
+              <Text style={styles.quickStatValue}>
+                {quickStats.weekClaims ?? 0}
+              </Text>
               <Text style={styles.quickStatSubtext}>claim</Text>
             </View>
             <View style={styles.quickStatCard}>
               <Text style={styles.quickStatLabel}>Сар</Text>
-              <Text style={styles.quickStatValue}>{quickStats.monthClaims}</Text>
+              <Text style={styles.quickStatValue}>
+                {quickStats.monthClaims ?? 0}
+              </Text>
               <Text style={styles.quickStatSubtext}>claim</Text>
             </View>
           </View>
@@ -234,16 +279,16 @@ export const AdminDashboardScreen: React.FC = () => {
       )}
 
       {/* ── Статусаар ────────────────────────────────────────── */}
-      {safeClaimsByStatus.length > 0 && (
+      {claimsByStatus.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>📋 Статусаар</Text>
           <View style={styles.card}>
-            {safeClaimsByStatus.map((item, idx) => (
+            {claimsByStatus.map((item, idx) => (
               <View
-                key={idx}
+                key={`status-${idx}`}
                 style={[
                   styles.listItem,
-                  idx === safeClaimsByStatus.length - 1 && { borderBottomWidth: 0 },
+                  idx === claimsByStatus.length - 1 && { borderBottomWidth: 0 },
                 ]}
               >
                 <View style={styles.listItemLeft}>
@@ -257,17 +302,52 @@ export const AdminDashboardScreen: React.FC = () => {
         </View>
       )}
 
+      {/* ── 7 хоногийн claim ─────────────────────────────────── */}
+      {claimsByDay.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>📅 7 хоногийн дүн</Text>
+          <View style={styles.card}>
+            {claimsByDay.map((item, idx) => {
+              const maxCount = Math.max(...claimsByDay.map((d) => d.count), 1);
+              const pct = (item.count / maxCount) * 100;
+              return (
+                <View
+                  key={`day-${idx}`}
+                  style={[
+                    styles.dayItem,
+                    idx === claimsByDay.length - 1 && { borderBottomWidth: 0 },
+                  ]}
+                >
+                  <Text style={styles.dayLabel}>
+                    {new Date(item.date).toLocaleDateString('mn-MN', {
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                  </Text>
+                  <View style={styles.progressBar}>
+                    <View
+                      style={[styles.progressFill, { width: `${pct}%` }]}
+                    />
+                  </View>
+                  <Text style={styles.dayCount}>{item.count}</Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      )}
+
       {/* ── Гэмтлийн төрлүүд ─────────────────────────────────── */}
-      {safeTopDamage.length > 0 && (
+      {topDamage.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>🔧 Гэмтлийн төрлүүд</Text>
           <View style={styles.card}>
-            {safeTopDamage.map((item, idx) => (
+            {topDamage.map((item, idx) => (
               <View
-                key={idx}
+                key={`damage-${idx}`}
                 style={[
                   styles.damageTypeItem,
-                  idx === safeTopDamage.length - 1 && { borderBottomWidth: 0 },
+                  idx === topDamage.length - 1 && { borderBottomWidth: 0 },
                 ]}
               >
                 <View style={styles.damageTypeLeft}>
@@ -278,12 +358,12 @@ export const AdminDashboardScreen: React.FC = () => {
                   <View
                     style={[
                       styles.progressFill,
-                      { width: `${Math.min(item.percentage, 100)}%` },
+                      { width: `${Math.min(item.percentage ?? 0, 100)}%` },
                     ]}
                   />
                 </View>
                 <Text style={styles.percentage}>
-                  {item.percentage.toFixed(0)}%
+                  {(item.percentage ?? 0).toFixed(0)}%
                 </Text>
               </View>
             ))}
@@ -292,69 +372,106 @@ export const AdminDashboardScreen: React.FC = () => {
       )}
 
       {/* ── Өндөр эрсдэлтэй claim ────────────────────────────── */}
-      {safeHighRisk.length > 0 && (
+      {highRisk.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>⚠️ Өндөр эрсдэлтэй claim</Text>
-          {safeHighRisk.map((claim, idx) => (
-            <View key={claim.id ?? idx} style={styles.highRiskCard}>
+          <Text style={styles.sectionTitle}>
+            ⚠️ Өндөр эрсдэлтэй claim ({highRisk.length})
+          </Text>
+          {highRisk.map((claim, idx) => (
+            <View
+              key={claim.id ?? `risk-${idx}`}
+              style={styles.highRiskCard}
+            >
               <View style={styles.highRiskHeader}>
                 <Text style={styles.highRiskClaimNumber}>
                   {claim.claimNumber}
                 </Text>
-                <RiskBadge level={claim.riskLevel} size="large" />
+                <RiskBadge level={claim.riskLevel ?? 'medium'} size="large" />
               </View>
-              <InfoRow label="Тээвэр"         value={claim.vehicleInfo}                     icon="car"  />
-              <InfoRow label="Санал болгосон"  value={formatCurrency(claim.suggestedPayout)} icon="cash" />
-              <InfoRow label="Статус"          value={claim.status}                          icon="file" />
+              <InfoRow
+                label="Тээвэр"
+                value={claim.vehicleInfo ?? 'Мэдээлэл байхгүй'}
+                icon="car"
+              />
+              <InfoRow
+                label="Санал болгосон"
+                value={formatCurrency(Number(claim.suggestedPayout ?? 0))}
+                icon="cash"
+              />
+              <InfoRow
+                label="Статус"
+                value={claim.status ?? '—'}
+                icon="file"
+              />
             </View>
           ))}
         </View>
       )}
 
       {/* ── Сэжигтэй claim-үүд ───────────────────────────────── */}
-      {safeFraudAlerts.length > 0 && (
+      {fraudAlerts.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>
-            🚨 Сэжигтэй claim-үүд ({safeFraudAlerts.length})
+            🚨 Сэжигтэй claim-үүд ({fraudAlerts.length})
           </Text>
           {highFraud.length > 0 && (
             <>
               <View style={styles.fraudSectionHeader}>
-                <View style={[styles.fraudSectionDot, { backgroundColor: '#F44336' }]} />
+                <View
+                  style={[
+                    styles.fraudSectionDot,
+                    { backgroundColor: '#F44336' },
+                  ]}
+                />
                 <Text style={styles.fraudSectionLabel}>
                   Өндөр эрсдэл ({highFraud.length})
                 </Text>
               </View>
               {highFraud.map((alert, idx) => (
-                <FraudCard key={alert.id ?? idx} alert={alert} />
+                <FraudCard key={alert.id ?? `hf-${idx}`} alert={alert} />
               ))}
             </>
           )}
           {medFraud.length > 0 && (
             <>
               <View style={styles.fraudSectionHeader}>
-                <View style={[styles.fraudSectionDot, { backgroundColor: '#FFC107' }]} />
+                <View
+                  style={[
+                    styles.fraudSectionDot,
+                    { backgroundColor: '#FFC107' },
+                  ]}
+                />
                 <Text style={styles.fraudSectionLabel}>
                   Дунд эрсдэл ({medFraud.length})
                 </Text>
               </View>
               {medFraud.map((alert, idx) => (
-                <FraudCard key={alert.id ?? idx} alert={alert} />
+                <FraudCard key={alert.id ?? `mf-${idx}`} alert={alert} />
               ))}
             </>
           )}
         </View>
       )}
 
-      {/* ── Хоосон ───────────────────────────────────────────── */}
-      {!stats && !quickStats && safeClaimsByStatus.length === 0 && (
-        <View style={styles.emptyBox}>
-          <Text style={styles.emptyText}>Өгөгдөл байхгүй байна</Text>
-          <Text style={styles.emptySubText}>
-            Admin эрхтэй хэрэглэгчээр нэвтэрсэн эсэхийг шалгана уу
-          </Text>
-        </View>
-      )}
+      {/* ── Бүгд хоосон ─────────────────────────────────────── */}
+      {!stats &&
+        !quickStats &&
+        claimsByStatus.length === 0 &&
+        highRisk.length === 0 &&
+        fraudAlerts.length === 0 && (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyText}>Өгөгдөл байхгүй байна</Text>
+            <Text style={styles.emptySubText}>
+              Admin эрхтэй хэрэглэгчээр нэвтэрсэн эсэхийг шалгана уу
+            </Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={fetchDashboardData}
+            >
+              <Text style={styles.retryButtonText}>Дахин оролдох</Text>
+            </TouchableOpacity>
+          </View>
+        )}
     </ScrollView>
   );
 };
@@ -387,12 +504,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
+    marginTop: 8,
   },
   retryButtonText: {
     color: '#fff',
     fontSize: 15,
     fontWeight: '600',
   },
+
+  // ── Section ────────────────────────────────────────────────
   section: {
     marginTop: 20,
   },
@@ -414,6 +534,8 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
+
+  // ── Quick stats ────────────────────────────────────────────
   quickStatsGrid: {
     flexDirection: 'row',
     marginHorizontal: 16,
@@ -437,7 +559,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   quickStatValue: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
     color: '#2196F3',
   },
@@ -445,6 +567,14 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#aaa',
   },
+  quickStatPayout: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4CAF50',
+    marginTop: 4,
+  },
+
+  // ── List item ──────────────────────────────────────────────
   listItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -470,6 +600,31 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#2196F3',
   },
+
+  // ── Day chart ──────────────────────────────────────────────
+  dayItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    gap: 10,
+  },
+  dayLabel: {
+    fontSize: 12,
+    color: '#666',
+    width: 60,
+  },
+  dayCount: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2196F3',
+    width: 28,
+    textAlign: 'right',
+  },
+
+  // ── Damage types ───────────────────────────────────────────
   damageTypeItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -480,7 +635,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   damageTypeLeft: {
-    width: 100,
+    width: 110,
   },
   damageTypeName: {
     fontSize: 13,
@@ -511,6 +666,8 @@ const styles = StyleSheet.create({
     width: 38,
     textAlign: 'right',
   },
+
+  // ── High risk ──────────────────────────────────────────────
   highRiskCard: {
     marginHorizontal: 16,
     marginBottom: 10,
@@ -536,6 +693,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#222',
   },
+
+  // ── Fraud alerts ───────────────────────────────────────────
   fraudSectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -597,6 +756,8 @@ const styles = StyleSheet.create({
     color: '#888',
     lineHeight: 18,
   },
+
+  // ── Empty state ────────────────────────────────────────────
   emptyBox: {
     alignItems: 'center',
     paddingVertical: 48,
@@ -613,5 +774,6 @@ const styles = StyleSheet.create({
     color: '#bbb',
     textAlign: 'center',
     lineHeight: 20,
+    marginBottom: 16,
   },
 });
