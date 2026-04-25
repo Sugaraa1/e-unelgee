@@ -1,20 +1,19 @@
-// src/ai/ai.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import OpenAI from 'openai';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 import { PricingService } from '../pricing/pricing.service';
 
 export interface DamagedPart {
   partName: string;
   damageType: 'scratch' | 'dent' | 'crack' | 'broken' | 'paint_damage' | 'glass_damage';
   severity: 'minor' | 'moderate' | 'severe';
-  confidence: number; // 0-1
+  confidence: number;
 }
 
 export interface AIAnalysisResult {
   damagedParts: DamagedPart[];
   overallSeverity: 'minor' | 'moderate' | 'severe' | 'none';
-  overallConfidence: number; // 0-1
+  overallConfidence: number;
   estimatedRepairCost?: number;
   estimatedPartsCost?: number;
   estimatedLaborCost?: number;
@@ -30,51 +29,85 @@ export interface AIAnalysisResult {
 @Injectable()
 export class AIService {
   private readonly logger = new Logger(AIService.name);
-  private openai: OpenAI;
+  private genAI: GoogleGenerativeAI | null = null;
   private readonly apiKey: string;
 
   constructor(
     private configService: ConfigService,
     private pricingService: PricingService,
   ) {
-    this.apiKey = this.configService.get<string>('OPENAI_API_KEY', '');
+    this.apiKey = this.configService.get<string>('GEMINI_API_KEY', '');
 
     if (!this.apiKey) {
-      this.logger.warn(
-        '⚠️  OPENAI_API_KEY not set. AI analysis will be disabled.',
-      );
+      this.logger.warn('⚠️  GEMINI_API_KEY тохируулагдаагүй байна.');
     } else {
-      this.openai = new OpenAI({ apiKey: this.apiKey });
-      this.logger.log('✅ OpenAI initialized');
+      this.genAI = new GoogleGenerativeAI(this.apiKey);
+      this.logger.log('✅ Google Gemini ажиллаж байна (үнэгүй tier)');
     }
   }
 
   /**
-   * Analyze vehicle damage from image URL using GPT-4 Vision
+   * Зургийн URL-г fetch хийж base64 болгох
+   */
+  private async urlToBase64(imageUrl: string): Promise<{ data: string; mimeType: string }> {
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      throw new Error(`Зураг татахад алдаа: ${response.status} ${response.statusText}`);
+    }
+
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    const mimeType = contentType.split(';')[0].trim();
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const base64 = buffer.toString('base64');
+
+    return { data: base64, mimeType };
+  }
+
+  /**
+   * Машины гэмтлийн зургийг Gemini-р шинжлэх
    */
   async analyzeVehicleDamage(imageUrl: string): Promise<AIAnalysisResult> {
-    if (!this.apiKey) {
-      this.logger.error('OpenAI API key not configured');
-      throw new Error('AI service not available');
+    if (!this.genAI) {
+      throw new Error('Gemini API тохируулагдаагүй байна');
     }
 
     try {
       this.logger.log(`🔍 Analyzing image: ${imageUrl}`);
+
+      // Зургийг base64 болгох
+      const { data: base64Data, mimeType } = await this.urlToBase64(imageUrl);
+
+      // Gemini Flash загвар ашиглах (үнэгүй)
+      const model = this.genAI.getGenerativeModel({
+        model: 'gemini-1.5-flash',
+        safetySettings: [
+          {
+            category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+            threshold: HarmBlockThreshold.BLOCK_NONE,
+          },
+          {
+            category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+            threshold: HarmBlockThreshold.BLOCK_NONE,
+          },
+        ],
+      });
 
       const prompt = `
 Та машины гэмтлийн зургийг шинжилж дараах JSON форматаар хариулна уу.
 
 **Даалгавар:**
 1. Зурагт эвдэрсэн хэсгүүдийг тодорхойлох
-2. Эвдрэлийн төрлийг тодорхойлох
-3. Ноцтой байдлыг үнэлэх (0-1 confidence)
+2. Эвдрэлийн төрлийг тодорхойлох  
+3. Ноцтой байдлыг үнэлэх
 4. Нийт ноцтой байдлыг үнэлэх
 
-**JSON Format (ҮНЭМЛЭХҮҮНИЙ JSON ХАРИУЛТ):**
+**JSON Format (ЗӨВХӨН JSON ХАРИУЛНА, өөр текст байхгүй):**
 {
   "damagedParts": [
     {
-      "partName": "хэсгийн нэр (жишээ: 'Front bumper', 'Hood', 'Door')",
+      "partName": "хэсгийн нэр (жишэ: Front bumper, Hood, Door)",
       "damageType": "scratch | dent | crack | broken | paint_damage | glass_damage",
       "severity": "minor | moderate | severe",
       "confidence": 0.0-1.0
@@ -82,73 +115,62 @@ export class AIService {
   ],
   "overallSeverity": "none | minor | moderate | severe",
   "overallConfidence": 0.0-1.0,
-  "analysisDetails": "Дэлгэрэнгүй тайлбар",
+  "analysisDetails": "Дэлгэрэнгүй тайлбар монголоор",
   "recommendations": ["зөвлөмж 1", "зөвлөмж 2"]
 }
 
-**Чухал:**
-- Зүгээр JSON-г өгөх, өөр текст байхгүй
+**Чухал дүрэм:**
+- Зөвхөн цэвэр JSON өгөх, markdown \`\`\` тэмдэглэгээ ашиглахгүй
 - Хэрэв гэмтэл байхгүй бол "damagedParts": []
-- Confidence нь 0.0-ээс 1.0 хүртэл тоо байх ёстой
-      `;
+- Confidence 0.0-ээс 1.0 хүртэл тоо байх ёстой
+- damageType зөвхөн: scratch, dent, crack, broken, paint_damage, glass_damage
+- severity зөвхөн: minor, moderate, severe
+`;
 
-      const response = await this.openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: prompt,
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: imageUrl,
-                  detail: 'high',
-                },
-              },
-            ],
+      const result = await model.generateContent([
+        prompt,
+        {
+          inlineData: {
+            mimeType: mimeType,
+            data: base64Data,
           },
-        ],
-        max_tokens: 1024,
-        temperature: 0.7,
-      });
+        },
+      ]);
 
-      const content = response.choices[0]?.message?.content || '{}';
+      const content = result.response.text();
+      this.logger.log(`📝 Gemini хариу: ${content.substring(0, 200)}...`);
 
-      // 1️⃣ JSON хэсгийг гаргаж авах
+      // JSON parse
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       const jsonString = jsonMatch ? jsonMatch[0] : content;
 
-      // 2️⃣ JSON parse хамгаал
-      let parsedResult;
+      let parsedResult: any;
       try {
         parsedResult = JSON.parse(jsonString);
       } catch (parseError) {
-        this.logger.error(
-          `❌ JSON parse failed. Raw content: ${content}`,
-          parseError,
-        );
-        // Parse амсаагүй үед default value буцаа
+        this.logger.error(`❌ JSON parse алдаа: ${content}`, parseError);
         parsedResult = {
           damagedParts: [],
           overallSeverity: 'none',
           overallConfidence: 0,
-          analysisDetails: 'JSON parse алдаа - гаралтыг хэвэгтэг шалгана уу',
+          analysisDetails: 'Зургийг шинжлэхэд алдаа гарлаа',
           recommendations: [],
         };
       }
 
-      // 3️⃣ Validation + Type casting
-      const result: AIAnalysisResult = {
+      // Validation + type casting
+      const aiResult: AIAnalysisResult = {
         damagedParts: Array.isArray(parsedResult.damagedParts)
           ? parsedResult.damagedParts.map((part: any) => ({
               partName: String(part.partName || 'Unknown'),
-              damageType: String(part.damageType || 'scratch'),
-              severity: String(part.severity || 'minor'),
-              confidence: Math.min(1, Math.max(0, Number(part.confidence) || 0)),
+              damageType: ['scratch', 'dent', 'crack', 'broken', 'paint_damage', 'glass_damage']
+                .includes(part.damageType)
+                ? part.damageType
+                : 'scratch',
+              severity: ['minor', 'moderate', 'severe'].includes(part.severity)
+                ? part.severity
+                : 'minor',
+              confidence: Math.min(1, Math.max(0, Number(part.confidence) || 0.7)),
             }))
           : [],
         overallSeverity: ['none', 'minor', 'moderate', 'severe'].includes(
@@ -166,88 +188,70 @@ export class AIService {
           : [],
       };
 
-      // 💰 PRICING: Засварын үнэ тооцох (Monbile нөхцөлд тохирсон)
-      if (result.damagedParts.length > 0) {
+      // 💰 Засварын үнэ тооцох
+      if (aiResult.damagedParts.length > 0) {
         const estimate = this.pricingService.calculateEstimate(
-          result.damagedParts,
-          result.overallConfidence,
-          'SEDAN', // Default vehicle type
+          aiResult.damagedParts,
+          aiResult.overallConfidence,
+          'SEDAN',
         );
 
-        result.estimatedPartsCost = estimate.partsCost.recommended;
-        result.estimatedLaborCost = estimate.laborCost.recommended;
-        result.estimatedRepairCost =
+        aiResult.estimatedPartsCost = estimate.partsCost.recommended;
+        aiResult.estimatedLaborCost = estimate.laborCost.recommended;
+        aiResult.estimatedRepairCost =
           estimate.partsCost.recommended + estimate.laborCost.recommended;
-        result.costEstimate = {
+        aiResult.costEstimate = {
           min: estimate.totalCost.min,
           max: estimate.totalCost.max,
           recommended: estimate.totalCost.recommended,
         };
 
         this.logger.log(
-          `💰 Засварын үнэлгээ: ₮${estimate.totalCost.min.toLocaleString()} - ₮${estimate.totalCost.max.toLocaleString()} (Санал: ₮${estimate.totalCost.recommended.toLocaleString()})`,
+          `💰 Үнэлгээ: ₮${estimate.totalCost.min.toLocaleString()} - ₮${estimate.totalCost.max.toLocaleString()}`,
         );
       }
 
       this.logger.log(
-        `✅ Analysis complete. Damaged parts found: ${result.damagedParts.length}`,
+        `✅ Шинжилгээ дууслаа. Гэмтэл: ${aiResult.damagedParts.length} хэсэг`,
       );
 
-      return result;
+      return aiResult;
     } catch (error) {
-      this.logger.error('❌ AI analysis failed:', error);
-      // Service алдаа нь queue retry логик сүүлээ
+      this.logger.error('❌ Gemini шинжилгээ амжилтгүй:', error);
       throw error;
     }
   }
 
   /**
-   * Estimate repair cost based on damaged parts
+   * Засварын зардал тооцох (fallback)
    */
   estimateRepairCost(damagedParts: DamagedPart[]): number {
-    // Simple cost estimation (можно улучшить)
     const costMap = {
-      scratch: { minor: 50, moderate: 150, severe: 300 },
-      dent: { minor: 100, moderate: 300, severe: 500 },
-      crack: { minor: 200, moderate: 500, severe: 1000 },
-      broken: { minor: 300, moderate: 800, severe: 2000 },
-      paint_damage: { minor: 100, moderate: 300, severe: 600 },
-      glass_damage: { minor: 150, moderate: 400, severe: 1000 },
+      scratch: { minor: 50000, moderate: 150000, severe: 300000 },
+      dent: { minor: 100000, moderate: 300000, severe: 500000 },
+      crack: { minor: 200000, moderate: 500000, severe: 1000000 },
+      broken: { minor: 300000, moderate: 800000, severe: 2000000 },
+      paint_damage: { minor: 100000, moderate: 300000, severe: 600000 },
+      glass_damage: { minor: 150000, moderate: 400000, severe: 1000000 },
     };
 
     let totalCost = 0;
-
     damagedParts.forEach((part) => {
-      const costs = costMap[part.damageType] || { minor: 100, moderate: 300, severe: 1000 };
-      const baseCost = costs[part.severity] || 0;
-      // Confidence-г үндэслэн зэргэлдэх
-      totalCost += baseCost * (part.confidence || 0.5);
+      const costs = costMap[part.damageType] || { minor: 100000, moderate: 300000, severe: 1000000 };
+      totalCost += costs[part.severity] * (part.confidence || 0.7);
     });
 
     return Math.round(totalCost);
   }
 
-  /**
-   * Health check for AI service
-   */
   isAvailable(): boolean {
-    return !!this.apiKey && !!this.openai;
+    return !!this.apiKey && !!this.genAI;
   }
 
-  /**
-   * Get service status
-   */
   getStatus(): { available: boolean; message: string } {
     if (!this.apiKey) {
-      return {
-        available: false,
-        message: 'OpenAI API key not configured',
-      };
+      return { available: false, message: 'GEMINI_API_KEY тохируулагдаагүй' };
     }
-
-    return {
-      available: true,
-      message: 'AI service ready',
-    };
+    return { available: true, message: 'Google Gemini ажиллаж байна (үнэгүй)' };
   }
 }
