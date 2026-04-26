@@ -43,8 +43,8 @@ interface CatalogCache {
   cachedAt: number;
 }
 
-const CACHE_KEY  = 'vehicle_catalog_v2';
-const CACHE_TTL  = 24 * 60 * 60 * 1000; // 24h
+const CACHE_KEY = 'vehicle_catalog_v3'; // v3 — хуучин буруу cache-г дарах
+const CACHE_TTL = 24 * 60 * 60 * 1000;
 
 // ── Props ─────────────────────────────────────────────────────
 interface VehicleSelectorProps {
@@ -53,8 +53,31 @@ interface VehicleSelectorProps {
   disabled?: boolean;
 }
 
+// ── API response-оос бодит өгөгдлийг задлах helper ───────────
+// TransformInterceptor + Controller хоёулаа { success, data } буцааж
+// давхар wrap үүсгэдэг тул brands олдох түвшинг автоматаар хайна.
+function unwrapCatalog(raw: any): any {
+  if (!raw) return null;
+
+  const candidates = [
+    raw,
+    raw?.data,
+    raw?.data?.data,
+    raw?.data?.data?.data,
+  ];
+
+  for (const c of candidates) {
+    if (c && Array.isArray(c?.brands) && c.brands.length > 0) {
+      return c;
+    }
+  }
+
+  // brands олдоогүй — хамгийн гүнийг буцаана
+  return raw?.data?.data ?? raw?.data ?? raw;
+}
+
 // ════════════════════════════════════════════════════════════════
-// PICKER MODAL — reusable generic list picker
+// PICKER MODAL
 // ════════════════════════════════════════════════════════════════
 interface PickerItem {
   id: string;
@@ -114,19 +137,11 @@ const PickerModal: React.FC<PickerModalProps> = ({
         >
           <View style={[pm.colorSwatch, { backgroundColor: item.hex }]}>
             {isSelected && (
-              <Ionicons
-                name="checkmark"
-                size={14}
-                color={item.darkText ? '#fff' : '#1a1a1a'}
-              />
+              <Ionicons name="checkmark" size={14} color={item.darkText ? '#fff' : '#1a1a1a'} />
             )}
           </View>
-          <Text style={[pm.colorLabel, isSelected && pm.selectedLabel]}>
-            {item.label}
-          </Text>
-          {isSelected && (
-            <Ionicons name="checkmark-circle" size={18} color={COLORS.secondary} />
-          )}
+          <Text style={[pm.colorLabel, isSelected && pm.selectedLabel]}>{item.label}</Text>
+          {isSelected && <Ionicons name="checkmark-circle" size={18} color={COLORS.secondary} />}
         </TouchableOpacity>
       );
     }
@@ -138,12 +153,8 @@ const PickerModal: React.FC<PickerModalProps> = ({
         activeOpacity={0.7}
       >
         <View style={pm.itemLeft}>
-          <Text style={[pm.itemLabel, isSelected && pm.selectedLabel]}>
-            {item.label}
-          </Text>
-          {item.sub && (
-            <Text style={pm.itemSub}>{item.sub}</Text>
-          )}
+          <Text style={[pm.itemLabel, isSelected && pm.selectedLabel]}>{item.label}</Text>
+          {item.sub && <Text style={pm.itemSub}>{item.sub}</Text>}
         </View>
         <View style={pm.itemRight}>
           {item.badge && (
@@ -151,27 +162,16 @@ const PickerModal: React.FC<PickerModalProps> = ({
               <Text style={pm.popularBadgeText}>{item.badge}</Text>
             </View>
           )}
-          {isSelected && (
-            <Ionicons name="checkmark-circle" size={18} color={COLORS.secondary} />
-          )}
+          {isSelected && <Ionicons name="checkmark-circle" size={18} color={COLORS.secondary} />}
         </View>
       </TouchableOpacity>
     );
   };
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <SafeAreaView style={pm.safe}>
-          {/* Header */}
           <View style={pm.header}>
             <TouchableOpacity style={pm.closeBtn} onPress={onClose}>
               <Ionicons name="close" size={22} color={COLORS.text} />
@@ -180,7 +180,6 @@ const PickerModal: React.FC<PickerModalProps> = ({
             <View style={{ width: 36 }} />
           </View>
 
-          {/* Search */}
           {searchable && (
             <View style={pm.searchWrap}>
               <Ionicons name="search-outline" size={16} color={COLORS.textMuted} style={{ marginRight: 8 }} />
@@ -202,10 +201,8 @@ const PickerModal: React.FC<PickerModalProps> = ({
             </View>
           )}
 
-          {/* Count */}
           <Text style={pm.countLabel}>{filtered.length} үр дүн</Text>
 
-          {/* List */}
           <FlatList
             data={filtered}
             keyExtractor={(item) => item.id}
@@ -216,7 +213,9 @@ const PickerModal: React.FC<PickerModalProps> = ({
             ListEmptyComponent={() => (
               <View style={pm.emptyBox}>
                 <Ionicons name="search-outline" size={32} color={COLORS.textLight} />
-                <Text style={pm.emptyText}>"{query}" олдсонгүй</Text>
+                <Text style={pm.emptyText}>
+                  {query ? `"${query}" олдсонгүй` : 'Өгөгдөл байхгүй байна'}
+                </Text>
               </View>
             )}
             contentContainerStyle={{ paddingBottom: 40 }}
@@ -237,17 +236,15 @@ const StepIndicator: React.FC<{ currentStep: number; completedSteps: number }> =
 }) => (
   <View style={si.wrap}>
     {STEPS.map((label, i) => {
-      const done    = i < completedSteps;
-      const active  = i === currentStep;
+      const done   = i < completedSteps;
+      const active = i === currentStep;
       return (
         <React.Fragment key={label}>
           <View style={si.step}>
             <View style={[si.circle, done && si.circleDone, active && si.circleActive]}>
-              {done ? (
-                <Ionicons name="checkmark" size={12} color="#fff" />
-              ) : (
-                <Text style={[si.circleNum, active && si.circleNumActive]}>{i + 1}</Text>
-              )}
+              {done
+                ? <Ionicons name="checkmark" size={12} color="#fff" />
+                : <Text style={[si.circleNum, active && si.circleNumActive]}>{i + 1}</Text>}
             </View>
             <Text style={[si.label, (done || active) && si.labelActive]}>{label}</Text>
           </View>
@@ -261,7 +258,7 @@ const StepIndicator: React.FC<{ currentStep: number; completedSteps: number }> =
 );
 
 // ════════════════════════════════════════════════════════════════
-// FIELD ROW — tap to open picker
+// FIELD ROW
 // ════════════════════════════════════════════════════════════════
 interface FieldRowProps {
   step: number;
@@ -278,44 +275,34 @@ const FieldRow: React.FC<FieldRowProps> = ({
   step, label, value, placeholder, disabled, onPress, colorHex, icon,
 }) => {
   const scale = useRef(new Animated.Value(1)).current;
-
-  const pressIn = () =>
-    Animated.spring(scale, { toValue: 0.98, useNativeDriver: true, speed: 40 }).start();
-  const pressOut = () =>
-    Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 20 }).start();
+  const pressIn  = () => Animated.spring(scale, { toValue: 0.98, useNativeDriver: true, speed: 40 }).start();
+  const pressOut = () => Animated.spring(scale, { toValue: 1,    useNativeDriver: true, speed: 20 }).start();
 
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
       <TouchableOpacity
-        style={[fr.row, disabled && fr.rowDisabled, value && fr.rowFilled]}
+        style={[fr.row, disabled && fr.rowDisabled, !!value && fr.rowFilled]}
         onPress={onPress}
         onPressIn={pressIn}
         onPressOut={pressOut}
         disabled={disabled}
         activeOpacity={1}
       >
-        {/* Step number */}
-        <View style={[fr.stepBubble, value && fr.stepBubbleDone]}>
-          {value ? (
-            <Ionicons name="checkmark" size={11} color="#fff" />
-          ) : (
-            <Text style={[fr.stepNum, disabled && fr.stepNumDisabled]}>{step}</Text>
-          )}
+        <View style={[fr.stepBubble, !!value && fr.stepBubbleDone]}>
+          {value
+            ? <Ionicons name="checkmark" size={11} color="#fff" />
+            : <Text style={[fr.stepNum, disabled && fr.stepNumDisabled]}>{step}</Text>}
         </View>
 
-        {/* Icon */}
-        {colorHex ? (
-          <View style={[fr.colorPreview, { backgroundColor: colorHex }]} />
-        ) : (
-          <Ionicons
-            name={icon as any}
-            size={18}
-            color={disabled ? COLORS.textLight : value ? COLORS.primary : COLORS.textMuted}
-            style={{ marginHorizontal: 8 }}
-          />
-        )}
+        {colorHex
+          ? <View style={[fr.colorPreview, { backgroundColor: colorHex }]} />
+          : <Ionicons
+              name={icon as any}
+              size={18}
+              color={disabled ? COLORS.textLight : value ? COLORS.primary : COLORS.textMuted}
+              style={{ marginHorizontal: 8 }}
+            />}
 
-        {/* Text */}
         <View style={{ flex: 1 }}>
           <Text style={fr.fieldLabel}>{label}</Text>
           <Text style={[fr.fieldValue, !value && fr.fieldPlaceholder]} numberOfLines={1}>
@@ -323,12 +310,7 @@ const FieldRow: React.FC<FieldRowProps> = ({
           </Text>
         </View>
 
-        {/* Chevron */}
-        <Ionicons
-          name="chevron-forward"
-          size={16}
-          color={disabled ? COLORS.border : COLORS.textMuted}
-        />
+        <Ionicons name="chevron-forward" size={16} color={disabled ? COLORS.border : COLORS.textMuted} />
       </TouchableOpacity>
     </Animated.View>
   );
@@ -340,152 +322,134 @@ const FieldRow: React.FC<FieldRowProps> = ({
 export const VehicleSelector: React.FC<VehicleSelectorProps> = ({
   value, onChange, disabled = false,
 }) => {
-  // ── Selection state ────────────────────────────────────────
-  const [brand,    setBrand]    = useState(value?.brand   ?? '');
-  const [model,    setModel]    = useState(value?.model   ?? '');
-  const [year,     setYear]     = useState(value?.year    ?? 0);
-  const [color,    setColor]    = useState(value?.color   ?? '');
+  const [brand,    setBrand]    = useState(value?.brand    ?? '');
+  const [model,    setModel]    = useState(value?.model    ?? '');
+  const [year,     setYear]     = useState(value?.year     ?? 0);
+  const [color,    setColor]    = useState(value?.color    ?? '');
   const [colorHex, setColorHex] = useState(value?.colorHex ?? '');
 
-  // ── Catalog state ──────────────────────────────────────────
-  const [catalog, setCatalog]  = useState<CatalogCache | null>(null);
-  const [loading, setLoading]  = useState(true);
+  const [catalog,    setCatalog]    = useState<CatalogCache | null>(null);
+  const [loading,    setLoading]    = useState(true);
+  const [fetchError, setFetchError] = useState(false);
 
-  // ── Modal state ────────────────────────────────────────────
-  const [openPicker, setOpenPicker] = useState<
-    'brand' | 'model' | 'year' | 'color' | null
-  >(null);
+  const [openPicker, setOpenPicker] = useState<'brand' | 'model' | 'year' | 'color' | null>(null);
 
-  // ── Load catalog (cache first) ─────────────────────────────
-  useEffect(() => {
-    loadCatalog();
-  }, []);
+  useEffect(() => { loadCatalog(); }, []);
 
   const loadCatalog = async () => {
+    setFetchError(false);
     try {
-      // Try cache first
       const raw = await AsyncStorage.getItem(CACHE_KEY);
       if (raw) {
         const cached: CatalogCache = JSON.parse(raw);
-        if (Date.now() - cached.cachedAt < CACHE_TTL) {
+        if (
+          Date.now() - cached.cachedAt < CACHE_TTL &&
+          Array.isArray(cached.brands) && cached.brands.length > 0 &&
+          Array.isArray(cached.years)  && cached.years.length  > 0
+        ) {
           setCatalog(cached);
           setLoading(false);
           return;
         }
       }
-      // Fetch from API
-      await fetchAndCacheCatalog();
     } catch {
-      // Fallback: try API without cache
-      await fetchAndCacheCatalog();
+      // cache алдаа — API-с шинэчилнэ
     }
+    await fetchAndCacheCatalog();
   };
 
   const fetchAndCacheCatalog = async () => {
     try {
-      const { data } = await apiClient.get('/vehicles/catalog/all');
-      const catalog: CatalogCache = {
-        ...data.data,
+      const { data: axiosData } = await apiClient.get('/vehicles/catalog/all');
+
+      // ── FIX: TransformInterceptor + Controller хоёулаа
+      // { success, data } буцааж давхар wrap үүсгэдэг.
+      // unwrapCatalog() нь brands олдох түвшинг автоматаар тодорхойлно.
+      const payload = unwrapCatalog(axiosData);
+
+      const newCatalog: CatalogCache = {
+        brands: Array.isArray(payload?.brands) ? payload.brands : [],
+        modelsByBrand:
+          payload?.modelsByBrand && typeof payload.modelsByBrand === 'object'
+            ? payload.modelsByBrand
+            : {},
+        years:  Array.isArray(payload?.years)  ? payload.years  : [],
+        colors: Array.isArray(payload?.colors) ? payload.colors : [],
         cachedAt: Date.now(),
       };
-      setCatalog(catalog);
-      await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(catalog));
+
+      if (newCatalog.brands.length === 0) {
+        console.warn(
+          '[VehicleSelector] brands хоосон! Response бүтэц:',
+          JSON.stringify(axiosData).slice(0, 500),
+        );
+      }
+
+      setCatalog(newCatalog);
+      await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(newCatalog));
     } catch (err) {
-      Alert.alert('Каталог ачааллахад алдаа гарлаа', 'Интернэт холболтоо шалгана уу.');
+      console.error('[VehicleSelector] fetch error:', err);
+      setFetchError(true);
     } finally {
       setLoading(false);
     }
   };
 
-  // ── Computed picker items ──────────────────────────────────
+  // ── Picker items ─────────────────────────────────────────────
   const brandItems = useMemo((): PickerItem[] => {
-    if (!catalog) return [];
+    if (!catalog || !Array.isArray(catalog.brands)) return [];
     return catalog.brands.map((b) => ({
-      id: b.name,
-      label: b.name,
-      sub: b.country,
+      id: b.name, label: b.name, sub: b.country,
       badge: b.popularInMongolia ? '🇲🇳 Түгээмэл' : undefined,
     }));
   }, [catalog]);
 
   const modelItems = useMemo((): PickerItem[] => {
     if (!catalog || !brand) return [];
-    const models = catalog.modelsByBrand[brand] ?? [];
+    const models = Array.isArray(catalog.modelsByBrand?.[brand])
+      ? catalog.modelsByBrand[brand] : [];
     return models.map((m) => ({ id: m, label: m }));
   }, [catalog, brand]);
 
   const yearItems = useMemo((): PickerItem[] => {
-    if (!catalog) return [];
-    return catalog.years.map((y) => ({
-      id: String(y),
-      label: `${y} он`,
-    }));
+    if (!catalog || !Array.isArray(catalog.years)) return [];
+    return catalog.years.map((y) => ({ id: String(y), label: `${y} он` }));
   }, [catalog]);
 
   const colorItems = useMemo((): PickerItem[] => {
-    if (!catalog) return [];
+    if (!catalog || !Array.isArray(catalog.colors)) return [];
     return catalog.colors.map((c) => ({
-      id: c.name,
-      label: c.name,
-      sub: c.nameEn,
-      hex: c.hex,
-      darkText: c.darkText,
+      id: c.name, label: c.name, sub: c.nameEn, hex: c.hex, darkText: c.darkText,
     }));
   }, [catalog]);
 
-  // ── Selection handlers ─────────────────────────────────────
-  const handleBrandSelect = useCallback(
-    (item: PickerItem) => {
-      setBrand(item.id);
-      setModel('');     // reset dependent fields
-      setYear(0);
-      setColor('');
-      setColorHex('');
-    },
-    [],
-  );
+  // ── Handlers ─────────────────────────────────────────────────
+  const handleBrandSelect = useCallback((item: PickerItem) => {
+    setBrand(item.id); setModel(''); setYear(0); setColor(''); setColorHex('');
+  }, []);
 
   const handleModelSelect = useCallback((item: PickerItem) => {
-    setModel(item.id);
-    setYear(0);
-    setColor('');
-    setColorHex('');
+    setModel(item.id); setYear(0); setColor(''); setColorHex('');
   }, []);
 
   const handleYearSelect = useCallback((item: PickerItem) => {
-    setYear(Number(item.id));
-    setColor('');
-    setColorHex('');
+    setYear(Number(item.id)); setColor(''); setColorHex('');
   }, []);
 
-  const handleColorSelect = useCallback(
-    (item: PickerItem) => {
-      setColor(item.id);
-      setColorHex(item.hex ?? '');
-      // Notify parent
-      if (brand && model && year) {
-        onChange({
-          brand,
-          model,
-          year,
-          color: item.id,
-          colorHex: item.hex ?? '',
-        });
-      }
-    },
-    [brand, model, year, onChange],
-  );
+  const handleColorSelect = useCallback((item: PickerItem) => {
+    setColor(item.id);
+    setColorHex(item.hex ?? '');
+    if (brand && model && year) {
+      onChange({ brand, model, year, color: item.id, colorHex: item.hex ?? '' });
+    }
+  }, [brand, model, year, onChange]);
 
-  // ── Step completion ────────────────────────────────────────
-  const completedSteps =
-    (brand ? 1 : 0) + (model ? 1 : 0) + (year ? 1 : 0) + (color ? 1 : 0);
+  // ── Steps ────────────────────────────────────────────────────
+  const completedSteps = (brand ? 1 : 0) + (model ? 1 : 0) + (year ? 1 : 0) + (color ? 1 : 0);
+  const currentStep    = !brand ? 0 : !model ? 1 : !year ? 2 : 3;
+  const allDone        = !!(brand && model && year && color);
 
-  const currentStep =
-    !brand ? 0 : !model ? 1 : !year ? 2 : !color ? 3 : 3;
-
-  const allDone = !!(brand && model && year && color);
-
-  // ── Summary card ───────────────────────────────────────────
+  // ── Loading ──────────────────────────────────────────────────
   if (loading) {
     return (
       <View style={vs.loadingBox}>
@@ -495,47 +459,50 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({
     );
   }
 
+  // ── Error / хоосон ──────────────────────────────────────────
+  if (fetchError || !catalog || catalog.brands.length === 0) {
+    return (
+      <View style={vs.errorBox}>
+        <Ionicons name="cloud-offline-outline" size={32} color={COLORS.textLight} />
+        <Text style={vs.errorText}>Каталог ачааллахад алдаа гарлаа</Text>
+        <TouchableOpacity
+          style={vs.retryBtn}
+          onPress={() => { setLoading(true); fetchAndCacheCatalog(); }}
+        >
+          <Ionicons name="refresh" size={15} color="#fff" />
+          <Text style={vs.retryBtnText}>Дахин оролдох</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={vs.container}>
-      {/* Step indicator */}
       <StepIndicator currentStep={currentStep} completedSteps={completedSteps} />
 
-      {/* Fields */}
       <View style={vs.fields}>
         <FieldRow
-          step={1}
-          label="Брэнд"
-          value={brand}
-          placeholder="Toyota, Hyundai, BMW..."
-          icon="business-outline"
+          step={1} label="Брэнд" value={brand}
+          placeholder="Toyota, Hyundai, BMW..." icon="business-outline"
           onPress={() => !disabled && setOpenPicker('brand')}
           disabled={disabled}
         />
-
         <FieldRow
-          step={2}
-          label="Загвар"
-          value={model}
+          step={2} label="Загвар" value={model}
           placeholder={brand ? 'Загвар сонгоно уу' : 'Эхлээд брэнд сонгоно уу'}
           icon="car-outline"
           onPress={() => !disabled && brand && setOpenPicker('model')}
           disabled={disabled || !brand}
         />
-
         <FieldRow
-          step={3}
-          label="Он жил"
-          value={year ? `${year} он` : undefined}
+          step={3} label="Он жил" value={year ? `${year} он` : undefined}
           placeholder={model ? 'Он жил сонгоно уу' : 'Эхлээд загвар сонгоно уу'}
           icon="calendar-outline"
           onPress={() => !disabled && model && setOpenPicker('year')}
           disabled={disabled || !model}
         />
-
         <FieldRow
-          step={4}
-          label="Өнгө"
-          value={color}
+          step={4} label="Өнгө" value={color}
           colorHex={colorHex || undefined}
           placeholder={year ? 'Өнгө сонгоно уу' : 'Эхлээд он жил сонгоно уу'}
           icon="color-palette-outline"
@@ -544,22 +511,15 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({
         />
       </View>
 
-      {/* Summary — бүгд сонгогдсон үед */}
       {allDone && (
         <View style={vs.summaryCard}>
           <View style={[vs.colorDot, { backgroundColor: colorHex }]} />
           <View style={{ flex: 1 }}>
-            <Text style={vs.summaryMain}>
-              {brand} {model}
-            </Text>
-            <Text style={vs.summarySub}>
-              {year} он • {color}
-            </Text>
+            <Text style={vs.summaryMain}>{brand} {model}</Text>
+            <Text style={vs.summarySub}>{year} он • {color}</Text>
           </View>
           <TouchableOpacity
-            onPress={() => {
-              setBrand(''); setModel(''); setYear(0); setColor(''); setColorHex('');
-            }}
+            onPress={() => { setBrand(''); setModel(''); setYear(0); setColor(''); setColorHex(''); }}
             style={vs.resetBtn}
           >
             <Ionicons name="refresh" size={14} color={COLORS.textMuted} />
@@ -567,7 +527,6 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({
         </View>
       )}
 
-      {/* Hint */}
       {!allDone && (
         <View style={vs.hint}>
           <Ionicons name="information-circle-outline" size={13} color={COLORS.primary} />
@@ -577,46 +536,29 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({
         </View>
       )}
 
-      {/* Modals */}
       <PickerModal
-        visible={openPicker === 'brand'}
-        title="Брэнд сонгох"
-        items={brandItems}
-        selectedId={brand}
-        onSelect={handleBrandSelect}
-        onClose={() => setOpenPicker(null)}
+        visible={openPicker === 'brand'} title="Брэнд сонгох"
+        items={brandItems} selectedId={brand}
+        onSelect={handleBrandSelect} onClose={() => setOpenPicker(null)}
         searchPlaceholder="Toyota, Hyundai, BMW..."
       />
-
       <PickerModal
-        visible={openPicker === 'model'}
-        title={`${brand} — Загвар сонгох`}
-        items={modelItems}
-        selectedId={model}
-        onSelect={handleModelSelect}
-        onClose={() => setOpenPicker(null)}
+        visible={openPicker === 'model'} title={`${brand} — Загвар сонгох`}
+        items={modelItems} selectedId={model}
+        onSelect={handleModelSelect} onClose={() => setOpenPicker(null)}
         searchPlaceholder="Загварын нэр хайх..."
       />
-
       <PickerModal
-        visible={openPicker === 'year'}
-        title="Он жил сонгох"
-        items={yearItems}
-        selectedId={year ? String(year) : undefined}
-        onSelect={handleYearSelect}
-        onClose={() => setOpenPicker(null)}
+        visible={openPicker === 'year'} title="Он жил сонгох"
+        items={yearItems} selectedId={year ? String(year) : undefined}
+        onSelect={handleYearSelect} onClose={() => setOpenPicker(null)}
         searchPlaceholder="Он жил хайх..."
       />
-
       <PickerModal
-        visible={openPicker === 'color'}
-        title="Өнгө сонгох"
-        items={colorItems}
-        selectedId={color}
-        onSelect={handleColorSelect}
-        onClose={() => setOpenPicker(null)}
-        colorMode
-        searchPlaceholder="Өнгөний нэр хайх..."
+        visible={openPicker === 'color'} title="Өнгө сонгох"
+        items={colorItems} selectedId={color}
+        onSelect={handleColorSelect} onClose={() => setOpenPicker(null)}
+        colorMode searchPlaceholder="Өнгөний нэр хайх..."
       />
     </View>
   );
@@ -625,8 +567,6 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({
 // ════════════════════════════════════════════════════════════════
 // STYLES
 // ════════════════════════════════════════════════════════════════
-
-// Picker Modal
 const pm = StyleSheet.create({
   safe:     { flex: 1, backgroundColor: '#F8FAFC' },
   header:   {
@@ -638,104 +578,93 @@ const pm = StyleSheet.create({
     width: 36, height: 36, borderRadius: RADIUS.sm, backgroundColor: '#F3F4F6',
     justifyContent: 'center', alignItems: 'center',
   },
-  title:    { fontSize: FONT_SIZE.lg, fontWeight: '700', color: '#111928' },
-
-  searchWrap: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#fff', margin: SPACING.md,
-    borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: '#E5E7EB',
-    paddingHorizontal: SPACING.md, height: 44,
+  title:            { fontSize: FONT_SIZE.lg, fontWeight: '700', color: '#111928' },
+  searchWrap:       {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
+    margin: SPACING.md, borderRadius: RADIUS.md, borderWidth: 1.5,
+    borderColor: '#E5E7EB', paddingHorizontal: SPACING.md, height: 44,
   },
-  searchInput: { flex: 1, fontSize: FONT_SIZE.md, color: '#111928' },
-
-  countLabel: {
-    fontSize: FONT_SIZE.xs, color: '#6B7280', paddingHorizontal: SPACING.lg,
-    marginBottom: 4, marginTop: -4,
+  searchInput:      { flex: 1, fontSize: FONT_SIZE.md, color: '#111928' },
+  countLabel:       {
+    fontSize: FONT_SIZE.xs, color: '#6B7280',
+    paddingHorizontal: SPACING.lg, marginBottom: 4, marginTop: -4,
   },
-
-  item:         { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.lg, paddingVertical: 14, backgroundColor: '#fff' },
-  itemSelected: { backgroundColor: '#EFF6FF' },
-  itemLeft:     { flex: 1 },
-  itemRight:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  itemLabel:    { fontSize: FONT_SIZE.md, color: '#111928' },
-  itemSub:      { fontSize: FONT_SIZE.xs, color: '#6B7280', marginTop: 2 },
-  selectedLabel: { fontWeight: '700', color: '#1A56DB' },
-  popularBadge: {
-    backgroundColor: '#ECFDF5', borderRadius: RADIUS.full,
-    paddingHorizontal: 6, paddingVertical: 2,
-  },
+  item:             { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.lg, paddingVertical: 14, backgroundColor: '#fff' },
+  itemSelected:     { backgroundColor: '#EFF6FF' },
+  itemLeft:         { flex: 1 },
+  itemRight:        { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  itemLabel:        { fontSize: FONT_SIZE.md, color: '#111928' },
+  itemSub:          { fontSize: FONT_SIZE.xs, color: '#6B7280', marginTop: 2 },
+  selectedLabel:    { fontWeight: '700', color: '#1A56DB' },
+  popularBadge:     { backgroundColor: '#ECFDF5', borderRadius: RADIUS.full, paddingHorizontal: 6, paddingVertical: 2 },
   popularBadgeText: { fontSize: 10, color: '#065F46', fontWeight: '600' },
-
-  sep:     { height: 1, backgroundColor: '#F8FAFC' },
-
-  colorRow:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.lg, paddingVertical: 12, backgroundColor: '#fff', gap: SPACING.md },
+  sep:              { height: 1, backgroundColor: '#F8FAFC' },
+  colorRow:         { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.lg, paddingVertical: 12, backgroundColor: '#fff', gap: SPACING.md },
   colorRowSelected: { backgroundColor: '#EFF6FF' },
-  colorSwatch:  { width: 36, height: 36, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: '#E5E7EB', justifyContent: 'center', alignItems: 'center' },
-  colorLabel:   { flex: 1, fontSize: FONT_SIZE.md, color: '#111928' },
-
-  emptyBox: { alignItems: 'center', paddingVertical: SPACING.xxl, gap: SPACING.sm },
-  emptyText: { fontSize: FONT_SIZE.sm, color: '#6B7280' },
+  colorSwatch:      { width: 36, height: 36, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: '#E5E7EB', justifyContent: 'center', alignItems: 'center' },
+  colorLabel:       { flex: 1, fontSize: FONT_SIZE.md, color: '#111928' },
+  emptyBox:         { alignItems: 'center', paddingVertical: SPACING.xxl, gap: SPACING.sm },
+  emptyText:        { fontSize: FONT_SIZE.sm, color: '#6B7280' },
 });
 
-// Step indicator
 const si = StyleSheet.create({
-  wrap:    { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.md },
-  step:    { alignItems: 'center', gap: 4 },
-  line:    { flex: 1, height: 1.5, backgroundColor: '#E5E7EB', marginBottom: 16 },
-  lineDone: { backgroundColor: '#0E9F6E' },
-
-  circle:         { width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: '#D1D5DB', backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center' },
-  circleDone:     { backgroundColor: '#0E9F6E', borderColor: '#0E9F6E' },
-  circleActive:   { borderColor: '#1A56DB', backgroundColor: '#EFF6FF' },
-  circleNum:      { fontSize: 11, fontWeight: '700', color: '#9CA3AF' },
+  wrap:            { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.md },
+  step:            { alignItems: 'center', gap: 4 },
+  line:            { flex: 1, height: 1.5, backgroundColor: '#E5E7EB', marginBottom: 16 },
+  lineDone:        { backgroundColor: '#0E9F6E' },
+  circle:          { width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: '#D1D5DB', backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center' },
+  circleDone:      { backgroundColor: '#0E9F6E', borderColor: '#0E9F6E' },
+  circleActive:    { borderColor: '#1A56DB', backgroundColor: '#EFF6FF' },
+  circleNum:       { fontSize: 11, fontWeight: '700', color: '#9CA3AF' },
   circleNumActive: { color: '#1A56DB' },
-
-  label:       { fontSize: 9, color: '#9CA3AF', fontWeight: '500' },
-  labelActive: { color: '#111928', fontWeight: '700' },
+  label:           { fontSize: 9, color: '#9CA3AF', fontWeight: '500' },
+  labelActive:     { color: '#111928', fontWeight: '700' },
 });
 
-// Field row
 const fr = StyleSheet.create({
-  row:          {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#fff', borderRadius: RADIUS.md, padding: SPACING.md,
-    borderWidth: 1.5, borderColor: '#E5E7EB', gap: 6,
+  row: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
+    borderRadius: RADIUS.md, padding: SPACING.md, borderWidth: 1.5,
+    borderColor: '#E5E7EB', gap: 6,
     ...Platform.select({
       ios:     { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3 },
       android: { elevation: 1 },
     }),
   },
-  rowDisabled:  { backgroundColor: '#F9FAFB', borderColor: '#F3F4F6', opacity: 0.6 },
-  rowFilled:    { borderColor: '#93C5FD', backgroundColor: '#EFF6FF' },
-  stepBubble:   { width: 22, height: 22, borderRadius: 11, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
-  stepBubbleDone: { backgroundColor: '#0E9F6E' },
-  stepNum:      { fontSize: 11, fontWeight: '800', color: '#6B7280' },
-  stepNumDisabled: { color: '#D1D5DB' },
-  fieldLabel:   { fontSize: 10, fontWeight: '700', color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.3 },
-  fieldValue:   { fontSize: FONT_SIZE.sm, fontWeight: '600', color: '#111928', marginTop: 1 },
+  rowDisabled:      { backgroundColor: '#F9FAFB', borderColor: '#F3F4F6', opacity: 0.6 },
+  rowFilled:        { borderColor: '#93C5FD', backgroundColor: '#EFF6FF' },
+  stepBubble:       { width: 22, height: 22, borderRadius: 11, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
+  stepBubbleDone:   { backgroundColor: '#0E9F6E' },
+  stepNum:          { fontSize: 11, fontWeight: '800', color: '#6B7280' },
+  stepNumDisabled:  { color: '#D1D5DB' },
+  fieldLabel:       { fontSize: 10, fontWeight: '700', color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.3 },
+  fieldValue:       { fontSize: FONT_SIZE.sm, fontWeight: '600', color: '#111928', marginTop: 1 },
   fieldPlaceholder: { color: '#9CA3AF', fontWeight: '400' },
-  colorPreview: { width: 24, height: 24, borderRadius: 6, borderWidth: 1, borderColor: '#E5E7EB', marginHorizontal: 8 },
+  colorPreview:     { width: 24, height: 24, borderRadius: 6, borderWidth: 1, borderColor: '#E5E7EB', marginHorizontal: 8 },
 });
 
-// Main
 const vs = StyleSheet.create({
   container:    { gap: SPACING.sm },
   loadingBox:   { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, padding: SPACING.md },
   loadingText:  { fontSize: FONT_SIZE.sm, color: '#6B7280' },
+  errorBox:     { alignItems: 'center', padding: SPACING.xl, gap: SPACING.sm },
+  errorText:    { fontSize: FONT_SIZE.sm, color: COLORS.textMuted, textAlign: 'center' },
+  retryBtn:     { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingHorizontal: 16, paddingVertical: 10 },
+  retryBtnText: { color: '#fff', fontWeight: '700', fontSize: FONT_SIZE.sm },
   fields:       { gap: 8 },
   summaryCard:  {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#ECFDF5', borderRadius: RADIUS.md, padding: SPACING.md,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#ECFDF5',
+    borderRadius: RADIUS.md, padding: SPACING.md,
     borderWidth: 1, borderColor: '#6EE7B7', gap: SPACING.sm,
   },
   colorDot:     { width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, borderColor: '#E5E7EB' },
   summaryMain:  { fontSize: FONT_SIZE.md, fontWeight: '700', color: '#111928' },
   summarySub:   { fontSize: FONT_SIZE.xs, color: '#6B7280', marginTop: 2 },
   resetBtn:     { padding: 4 },
-  hint:         {
+  hint: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 6,
     backgroundColor: '#EFF6FF', borderRadius: RADIUS.sm, padding: SPACING.sm,
     borderWidth: 0.5, borderColor: '#93C5FD',
   },
-  hintText:     { fontSize: FONT_SIZE.xs, color: '#1D4ED8', flex: 1, lineHeight: 18 },
+  hintText: { fontSize: FONT_SIZE.xs, color: '#1D4ED8', flex: 1, lineHeight: 18 },
 });
