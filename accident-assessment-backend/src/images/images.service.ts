@@ -1,8 +1,3 @@
-// KEY FIXES:
-//   1. PUBLIC_BASE_URL replaces localhost for OpenAI access
-//   2. DamageAssessment query: use claimId column directly (not relation)
-//   3. Prevent duplicate DamageAssessment records
-//   4. Retry endpoint support
 import {
   Injectable,
   NotFoundException,

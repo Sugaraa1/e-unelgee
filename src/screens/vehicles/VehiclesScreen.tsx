@@ -13,6 +13,7 @@ import {
   Platform,
   ScrollView,
   RefreshControl,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE } from '../../constants';
@@ -26,11 +27,11 @@ import { VehicleSelector, type VehicleSelection } from '../../components/Vehicle
 
 // ── Fuel types ────────────────────────────────────────────────
 const FUEL_TYPES = [
-  { label: '⛽ Бензин',      value: 'petrol' },
-  { label: '🛢️ Дизель',     value: 'diesel' },
-  { label: '⚡ Цахилгаан',   value: 'electric' },
-  { label: '🔋 Гибрид',     value: 'hybrid' },
-  { label: '🔵 LPG',        value: 'lpg' },
+  { label: '⛽ Бензин',     value: 'petrol' },
+  { label: '🛢️ Дизель',    value: 'diesel' },
+  { label: '⚡ Цахилгаан',  value: 'electric' },
+  { label: '🔋 Гибрид',    value: 'hybrid' },
+  { label: '🔵 LPG',       value: 'lpg' },
 ];
 
 // ── VehicleCard ───────────────────────────────────────────────
@@ -70,8 +71,8 @@ const VehicleCard = ({
         </View>
 
         <View style={s.cardChips}>
-          <Chip icon="card-outline"           label={vehicle.licensePlate} />
-          <Chip icon="color-palette-outline"  label={vehicle.color} />
+          <Chip icon="card-outline"          label={vehicle.licensePlate} />
+          <Chip icon="color-palette-outline" label={vehicle.color} />
           <Chip label={fuelMap[vehicle.fuelType ?? 'petrol'] ?? vehicle.fuelType} />
           {vehicle.insuranceProvider && (
             <Chip icon="shield-outline" label={vehicle.insuranceProvider} />
@@ -91,9 +92,7 @@ const Chip = ({ icon, label }: { icon?: string; label: string }) => (
   </View>
 );
 
-// ── Plate input component ─────────────────────────────────────
-import { TextInput } from 'react-native';
-
+// ── Plate input ───────────────────────────────────────────────
 const PlateInput = ({
   value,
   onChangeText,
@@ -128,11 +127,11 @@ const PlateInput = ({
 // MAIN SCREEN
 // ════════════════════════════════════════════════════════════════
 export const VehiclesScreen = () => {
-  const [vehicles,    setVehicles]    = useState<Vehicle[]>([]);
-  const [loading,     setLoading]     = useState(true);
-  const [refreshing,  setRefreshing]  = useState(false);
+  const [vehicles,     setVehicles]     = useState<Vehicle[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [refreshing,   setRefreshing]   = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
-  const [submitting,  setSubmitting]  = useState(false);
+  const [submitting,   setSubmitting]   = useState(false);
 
   // Form state
   const [vehicleData,  setVehicleData]  = useState<Partial<VehicleSelection>>({});
@@ -140,7 +139,7 @@ export const VehiclesScreen = () => {
   const [fuelType,     setFuelType]     = useState('petrol');
   const [errors,       setErrors]       = useState<Record<string, string>>({});
 
-  // ── Fetch ────────────────────────────────────────────────
+  // ── Fetch ────────────────────────────────────────────────────
   const fetchVehicles = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
@@ -158,19 +157,19 @@ export const VehiclesScreen = () => {
 
   const onRefresh = () => { setRefreshing(true); fetchVehicles(true); };
 
-  // ── Validation ───────────────────────────────────────────
+  // ── Validation ───────────────────────────────────────────────
   const validate = (): boolean => {
     const e: Record<string, string> = {};
-    if (!vehicleData.brand)  e.brand = 'Брэнд сонгоно уу';
-    if (!vehicleData.model)  e.model = 'Загвар сонгоно уу';
-    if (!vehicleData.year)   e.year  = 'Он жил сонгоно уу';
-    if (!vehicleData.color)  e.color = 'Өнгө сонгоно уу';
-    if (!licensePlate.trim()) e.licensePlate = 'Улсын дугаар оруулна уу';
+    if (!vehicleData.brand)           e.brand        = 'Брэнд сонгоно уу';
+    if (!vehicleData.model)           e.model        = 'Загвар сонгоно уу';
+    if (!vehicleData.manufactureYear) e.year         = 'Үйлдвэрлэсэн он сонгоно уу';
+    if (!vehicleData.color)           e.color        = 'Өнгө сонгоно уу';
+    if (!licensePlate.trim())         e.licensePlate = 'Улсын дугаар оруулна уу';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
-  // ── Submit ───────────────────────────────────────────────
+  // ── Submit ───────────────────────────────────────────────────
   const handleSubmit = async () => {
     if (!validate()) return;
     setSubmitting(true);
@@ -178,14 +177,26 @@ export const VehiclesScreen = () => {
       const payload = {
         make:         vehicleData.brand!,
         model:        vehicleData.model!,
-        year:         vehicleData.year!,
+        // Backend-д manufactureYear → year болгоно
+        year:         vehicleData.manufactureYear!,
         color:        vehicleData.color!,
         licensePlate: licensePlate.trim(),
         fuelType,
+        // importYear-ийг notes эсвэл тусгай талбар болгон дамжуулж болно
+        // (backend-д importYear талбар нэмэгдсэн тохиолдолд):
+        // importYear: vehicleData.importYear || undefined,
       };
       const newVehicle = await createVehicle(payload);
       setVehicles((prev) => [newVehicle, ...prev]);
       closeModal();
+
+      // Хэрэв орж ирсэн он оруулсан бол мэдэгдэл харуулна
+      if (vehicleData.importYear) {
+        Alert.alert(
+          '✅ Машин нэмэгдлээ',
+          `Үйлдвэрлэсэн он: ${vehicleData.manufactureYear}\nОрж ирсэн он: ${vehicleData.importYear}\n\nЭнэ мэдээлэл AI үнэлгээний нарийвчлалыг нэмэгдүүлэхэд ашиглагдана.`,
+        );
+      }
     } catch (err: any) {
       const msg = err?.response?.data?.message ?? 'Машин нэмэхэд алдаа гарлаа';
       Alert.alert('Алдаа', Array.isArray(msg) ? msg.join('\n') : msg);
@@ -194,7 +205,7 @@ export const VehiclesScreen = () => {
     }
   };
 
-  // ── Delete ───────────────────────────────────────────────
+  // ── Delete ───────────────────────────────────────────────────
   const handleDelete = (id: string) => {
     const v = vehicles.find((x) => x.id === id);
     Alert.alert(
@@ -225,16 +236,14 @@ export const VehiclesScreen = () => {
     setErrors({});
   };
 
-  // ── Empty ────────────────────────────────────────────────
+  // ── Empty ────────────────────────────────────────────────────
   const renderEmpty = () => (
     <View style={s.emptyBox}>
       <View style={s.emptyIconBox}>
         <Ionicons name="car-outline" size={48} color={COLORS.textLight} />
       </View>
       <Text style={s.emptyTitle}>Машин бүртгэгдээгүй байна</Text>
-      <Text style={s.emptySub}>
-        "+" товч дарж машинаа нэмнэ үү
-      </Text>
+      <Text style={s.emptySub}>"+" товч дарж машинаа нэмнэ үү</Text>
     </View>
   );
 
@@ -314,15 +323,14 @@ export const VehiclesScreen = () => {
                 <Text style={s.sectionTitle}>Машины мэдээлэл</Text>
                 <VehicleSelector
                   value={vehicleData}
-                  onChange={(data) => {
+                  onChange={(data: VehicleSelection) => {
                     setVehicleData(data);
                     setErrors((prev) => ({
-                      ...prev,
-                      brand: '', model: '', year: '', color: '',
+                      ...prev, brand: '', model: '', year: '', color: '',
                     }));
                   }}
                 />
-                {/* Validation errors for vehicle selection */}
+                {/* Validation errors */}
                 {(errors.brand || errors.model || errors.year || errors.color) && (
                   <View style={s.selectorError}>
                     <Ionicons name="warning-outline" size={14} color={COLORS.danger} />
@@ -333,7 +341,7 @@ export const VehiclesScreen = () => {
                 )}
               </View>
 
-              {/* ── Улсын дугаар ────────────────────────── */}
+              {/* ── Улсын дугаар ── */}
               <View style={s.section}>
                 <Text style={s.sectionTitle}>Бүртгэлийн мэдээлэл</Text>
                 <PlateInput
@@ -346,7 +354,7 @@ export const VehiclesScreen = () => {
                 />
               </View>
 
-              {/* ── Түлшний төрөл ────────────────────────── */}
+              {/* ── Түлшний төрөл ── */}
               <View style={s.section}>
                 <Text style={s.sectionTitle}>Түлшний төрөл</Text>
                 <View style={s.fuelRow}>
@@ -365,7 +373,7 @@ export const VehiclesScreen = () => {
                 </View>
               </View>
 
-              {/* ── Submit ──────────────────────────────── */}
+              {/* ── Submit ── */}
               <TouchableOpacity
                 style={[s.submitBtn, submitting && s.submitBtnDisabled]}
                 onPress={handleSubmit}
@@ -394,23 +402,18 @@ export const VehiclesScreen = () => {
 // ── Styles ────────────────────────────────────────────────────
 const s = StyleSheet.create({
   safe:        { flex: 1, backgroundColor: COLORS.background },
-
   header:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg, paddingBottom: SPACING.md },
   headerTitle: { fontSize: FONT_SIZE.xl, fontWeight: '700', color: COLORS.text },
   headerSub:   { fontSize: FONT_SIZE.sm, color: COLORS.textMuted, marginTop: 2 },
   addBtn:      { width: 44, height: 44, borderRadius: RADIUS.md, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center', ...Platform.select({ ios: { shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 }, android: { elevation: 4 } }) },
-
   listContent: { paddingHorizontal: SPACING.lg, paddingBottom: SPACING.xl },
   listEmpty:   { flex: 1, justifyContent: 'center' },
-
   loadingBox:  { flex: 1, justifyContent: 'center', alignItems: 'center', gap: SPACING.sm },
   loadingText: { fontSize: FONT_SIZE.sm, color: COLORS.textMuted },
-
   emptyBox:    { alignItems: 'center', paddingVertical: SPACING.xxl, gap: SPACING.sm },
   emptyIconBox: { width: 96, height: 96, borderRadius: 48, backgroundColor: COLORS.border, justifyContent: 'center', alignItems: 'center', marginBottom: SPACING.sm },
   emptyTitle:  { fontSize: FONT_SIZE.lg, fontWeight: '700', color: COLORS.textMuted },
   emptySub:    { fontSize: FONT_SIZE.sm, color: COLORS.textLight, textAlign: 'center' },
-
   card:        { flexDirection: 'row', backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden', ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6 }, android: { elevation: 2 } }) },
   cardAccent:  { width: 4, backgroundColor: COLORS.primary },
   cardBody:    { flex: 1, padding: SPACING.md },
@@ -422,30 +425,25 @@ const s = StyleSheet.create({
   cardChips:   { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   chip:        { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.background, borderRadius: RADIUS.full, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: COLORS.border },
   chipText:    { fontSize: FONT_SIZE.xs, color: COLORS.textMuted, fontWeight: '500' },
-
   modalHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: COLORS.border },
   modalTitle:    { fontSize: FONT_SIZE.lg, fontWeight: '700', color: COLORS.text },
   modalCloseBtn: { width: 36, height: 36, borderRadius: RADIUS.sm, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
   modalContent:  { padding: SPACING.lg, gap: SPACING.md },
-
   section:       { gap: SPACING.sm },
   sectionTitle:  { fontSize: FONT_SIZE.xs, fontWeight: '700', color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
   selectorError: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FEF2F2', borderRadius: RADIUS.sm, padding: 8, borderWidth: 0.5, borderColor: '#FCA5A5' },
   selectorErrorText: { fontSize: FONT_SIZE.xs, color: COLORS.danger },
-
   fieldGroup:  { gap: 6 },
   fieldLabel:  { fontSize: FONT_SIZE.sm, fontWeight: '600', color: COLORS.text },
   inputWrap:   { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: COLORS.border, paddingHorizontal: SPACING.md, height: 50 },
   inputError:  { borderColor: COLORS.danger },
   input:       { flex: 1, fontSize: FONT_SIZE.md, color: COLORS.text },
   errorText:   { fontSize: FONT_SIZE.xs, color: COLORS.danger, marginTop: 2 },
-
   fuelRow:         { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   fuelChip:        { paddingHorizontal: 12, paddingVertical: 8, borderRadius: RADIUS.full, borderWidth: 1.5, borderColor: COLORS.border, backgroundColor: COLORS.background },
   fuelChipActive:  { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '12' },
   fuelChipText:    { fontSize: FONT_SIZE.sm, color: COLORS.textMuted, fontWeight: '500' },
   fuelChipTextActive: { color: COLORS.primary, fontWeight: '700' },
-
   submitBtn:        { flexDirection: 'row', backgroundColor: COLORS.primary, borderRadius: RADIUS.md, height: 52, justifyContent: 'center', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.sm, ...Platform.select({ ios: { shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 }, android: { elevation: 4 } }) },
   submitBtnDisabled: { opacity: 0.7 },
   submitBtnText:    { color: '#fff', fontSize: FONT_SIZE.md, fontWeight: '700' },

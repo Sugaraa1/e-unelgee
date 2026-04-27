@@ -55,7 +55,8 @@ export const VEHICLE_CATALOG: VehicleBrand[] = [
     country: 'Япон',
     popularInMongolia: true,
     models: [
-      'CR-V', 'HR-V', 'Pilot', 'Passport', 'Passport',
+      // ✅ FIX: 'Passport' давхар байсныг нэг болгов
+      'CR-V', 'HR-V', 'Pilot', 'Passport',
       'Accord', 'Civic', 'City', 'Jazz / Fit',
       'Odyssey', 'Step Wagon', 'Freed', 'Stream',
       'Vezel', 'ZR-V', 'WR-V',
@@ -183,11 +184,6 @@ export const VEHICLE_CATALOG: VehicleBrand[] = [
     ],
   },
   {
-    name: 'Volkswagen (UAG)',
-    country: 'Монгол / Герман',
-    models: [],
-  },
-  {
     name: 'UAZ',
     country: 'Орос',
     popularInMongolia: true,
@@ -243,7 +239,7 @@ export const VEHICLE_CATALOG: VehicleBrand[] = [
     ],
   },
   {
-    name: 'Пежо (Peugeot)',
+    name: 'Peugeot',
     country: 'Франц',
     models: ['3008', '5008', '508', '408', '208', '2008'],
   },
