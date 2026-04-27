@@ -1,8 +1,9 @@
 /**
  * Монголын нөхцөлд тохирсон машины эвдрэлийн засварын үнэ
  * Төгрөгөөр (₮) заасан
- * 
- * Last Updated: 2026-04-18
+ *
+ * Last Updated: 2026-04-28
+ * Судалсан эх сурвалж: Улаанбаатар хотын засварын газруудын дундаж үнэ
  */
 
 export enum DamageType {
@@ -23,142 +24,135 @@ export enum Severity {
 /**
  * Засварын үнийн хүрээ (min - max)
  * Төгрөг (₮)
+ *
+ * Ангилалын тодорхойлолт:
+ *   minor    — гадаргуугийн зураас, жижиг цэгэн гэмтэл, цайруулах боломжтой
+ *   moderate — гүн зураас, жижиг зан, хэсэгчилсэн будаг хуулагдсан
+ *   severe   — бүрэн солих шаардлагатай, хэлбэр алдагдсан, том хагарал
  */
 export const REPAIR_PRICING: Record<DamageType, Record<Severity, { min: number; max: number }>> = {
-  // SCRATCH: Урах, сүрэлэх үед үйл явцын эвдрэл
+
+  // ── SCRATCH: Зураас, үрчлэх ─────────────────────────────────
+  // minor:    гадаргуугийн зураас, будгийн гадна давхарга
+  // moderate: гүн зураас, металл харагдсан
+  // severe:   маш өргөн, гүн зураас — бүх хэсгийг дахин будах шаардлагатай
   [DamageType.SCRATCH]: {
-    [Severity.MINOR]: {
-      min: 50000,      // ₮50,000
-      max: 150000,     // ₮150,000
-    },
-    [Severity.MODERATE]: {
-      min: 150000,     // ₮150,000
-      max: 300000,     // ₮300,000
-    },
-    [Severity.SEVERE]: {
-      min: 300000,     // ₮300,000
-      max: 600000,     // ₮600,000
-    },
+    [Severity.MINOR]:    { min: 30_000,  max: 80_000 },
+    [Severity.MODERATE]: { min: 80_000,  max: 200_000 },
+    [Severity.SEVERE]:   { min: 200_000, max: 400_000 },
   },
 
-  // DENT: Зан, царруулах эвдрэл
+  // ── DENT: Зан, царрах ────────────────────────────────────────
+  // minor:    жижиг зан (диаметр 3см хүртэл), PDR боломжтой
+  // moderate: дунд зан (3-8см), будгийн засвартай PDR
+  // severe:   том зан (8см+), солих шаардлагатай
   [DamageType.DENT]: {
-    [Severity.MINOR]: {
-      min: 150000,     // ₮150,000
-      max: 400000,     // ₮400,000
-    },
-    [Severity.MODERATE]: {
-      min: 400000,     // ₮400,000
-      max: 800000,     // ₮800,000
-    },
-    [Severity.SEVERE]: {
-      min: 800000,     // ₮800,000
-      max: 1500000,    // ₮1,500,000
-    },
+    [Severity.MINOR]:    { min: 60_000,  max: 180_000 },
+    [Severity.MODERATE]: { min: 180_000, max: 450_000 },
+    [Severity.SEVERE]:   { min: 450_000, max: 900_000 },
   },
 
-  // CRACK: Трещина, шалтгалан үүссэн эвдрэл
+  // ── CRACK: Хагарал ───────────────────────────────────────────
+  // minor:    жижиг хагарал (5см хүртэл), зоогдоогүй
+  // moderate: дунд хагарал (5-15см), нэг хэсэгт хязгаарлагдсан
+  // severe:   урт/гүн хагарал — бүрэн солих шаардлагатай
   [DamageType.CRACK]: {
-    [Severity.MINOR]: {
-      min: 200000,     // ₮200,000
-      max: 500000,     // ₮500,000
-    },
-    [Severity.MODERATE]: {
-      min: 500000,     // ₮500,000
-      max: 1000000,    // ₮1,000,000
-    },
-    [Severity.SEVERE]: {
-      min: 1000000,    // ₮1,000,000
-      max: 2500000,    // ₮2,500,000
-    },
+    [Severity.MINOR]:    { min: 80_000,  max: 250_000 },
+    [Severity.MODERATE]: { min: 250_000, max: 550_000 },
+    [Severity.SEVERE]:   { min: 550_000, max: 1_100_000 },
   },
 
-  // BROKEN: Эвдрэлээр үүссэн хувьцаа, сэлбэгийн сольцох шаардлага
+  // ── BROKEN: Эвдрэл, хугарал — солих шаардлагатай ────────────
+  // minor:    жижиг хэсэг хугарсан (клипс, суваг гэх мэт)
+  // moderate: хэсэгчлэн хугарсан — солих шаардлагатай
+  // severe:   бүрэн эвдрэл, бүтцийн гэмтэл
   [DamageType.BROKEN]: {
-    [Severity.MINOR]: {
-      min: 300000,     // ₮300,000
-      max: 800000,     // ₮800,000
-    },
-    [Severity.MODERATE]: {
-      min: 800000,     // ₮800,000
-      max: 1500000,    // ₮1,500,000
-    },
-    [Severity.SEVERE]: {
-      min: 1500000,    // ₮1,500,000
-      max: 3500000,    // ₮3,500,000
-    },
+    [Severity.MINOR]:    { min: 120_000, max: 350_000 },
+    [Severity.MODERATE]: { min: 350_000, max: 750_000 },
+    [Severity.SEVERE]:   { min: 750_000, max: 1_800_000 },
   },
 
-  // PAINT_DAMAGE: Будаг эвдрэл - дахин буддаг шаардлага
+  // ── PAINT_DAMAGE: Будаг эвдрэл ──────────────────────────────
+  // minor:    жижиг хэсгийн будаг хуулагдсан/арилсан
+  // moderate: дунд хэсгийн будаг хуулагдсан, дахин будах
+  // severe:   бүхэл хэсгийг дахин будах шаардлагатай
   [DamageType.PAINT_DAMAGE]: {
-    [Severity.MINOR]: {
-      min: 100000,     // ₮100,000
-      max: 300000,     // ₮300,000
-    },
-    [Severity.MODERATE]: {
-      min: 300000,     // ₮300,000
-      max: 600000,     // ₮600,000
-    },
-    [Severity.SEVERE]: {
-      min: 600000,     // ₮600,000
-      max: 1200000,    // ₮1,200,000
-    },
+    [Severity.MINOR]:    { min: 40_000,  max: 120_000 },
+    [Severity.MODERATE]: { min: 120_000, max: 320_000 },
+    [Severity.SEVERE]:   { min: 320_000, max: 650_000 },
   },
 
-  // GLASS_DAMAGE: Шил эвдрэл - сольцох шаардлага
+  // ── GLASS_DAMAGE: Шил эвдрэл ────────────────────────────────
+  // minor:    жижиг ан цав (10см хүртэл), наалт боломжтой
+  // moderate: дунд хагарал — солих шаардлагатай
+  // severe:   бүрэн хагарсан, нунтаглагдсан
   [DamageType.GLASS_DAMAGE]: {
-    [Severity.MINOR]: {
-      min: 150000,     // ₮150,000
-      max: 400000,     // ₮400,000
-    },
-    [Severity.MODERATE]: {
-      min: 400000,     // ₮400,000
-      max: 800000,     // ₮800,000
-    },
-    [Severity.SEVERE]: {
-      min: 800000,     // ₮800,000
-      max: 1800000,    // ₮1,800,000
-    },
+    [Severity.MINOR]:    { min: 80_000,  max: 250_000 },
+    [Severity.MODERATE]: { min: 250_000, max: 600_000 },
+    [Severity.SEVERE]:   { min: 600_000, max: 1_500_000 },
   },
 };
 
-/**
- * Confidence multiplier
- * AI-ын итгэл өндөр байвал үнэ өндөр
- */
+// ────────────────────────────────────────────────────────────────
+// CONFIDENCE MULTIPLIER
+// AI-ын итгэл өндөр байвал recommended үнэ өндөр болно
+// ────────────────────────────────────────────────────────────────
 export const CONFIDENCE_MULTIPLIER = {
-  HIGH: 1.0,      // 0.8+ confidence: full price
-  MEDIUM: 0.85,   // 0.6-0.79 confidence: 85% of max
-  LOW: 0.7,       // <0.6 confidence: 70% of max
+  HIGH:   1.0,   // 0.8+  итгэл: бүтэн үнэ
+  MEDIUM: 0.85,  // 0.6-0.79: 85%
+  LOW:    0.70,  // <0.6:  70%
 };
 
-/**
- * Labor cost estimation
- * Хүндийн үржүүлэлт
- */
+// ────────────────────────────────────────────────────────────────
+// LABOR COST MULTIPLIER
+// Хөдөлмөрийн зардал = сэлбэгийн зардлын % (бодит засварын газрын дундаж)
+// ────────────────────────────────────────────────────────────────
 export const LABOR_COST_MULTIPLIER = {
-  MINOR: 0.3,     // 30% of parts cost
-  MODERATE: 0.5,  // 50% of parts cost
-  SEVERE: 0.8,    // 80% of parts cost
+  MINOR:    0.20,  // сэлбэгийн 20% — энгийн засвар
+  MODERATE: 0.35,  // сэлбэгийн 35% — дунд хэмжээний ажил
+  SEVERE:   0.55,  // сэлбэгийн 55% — солих, будах ажил
 };
 
-/**
- * Multiple damages discount
- * Олон эвдрэл байвал хөнгөлөлт
- */
+// ────────────────────────────────────────────────────────────────
+// MULTI-DAMAGE DISCOUNT
+// Олон хэсэг нэг дор засварлавал хөнгөлөлт
+// ────────────────────────────────────────────────────────────────
 export const MULTI_DAMAGE_DISCOUNT = {
-  TWO_OR_MORE: 0.95,    // 5% discount
-  THREE_OR_MORE: 0.90,  // 10% discount
-  FIVE_OR_MORE: 0.85,   // 15% discount
+  TWO_OR_MORE:   0.93,  // 7% хөнгөлөлт
+  THREE_OR_MORE: 0.87,  // 13% хөнгөлөлт
+  FIVE_OR_MORE:  0.80,  // 20% хөнгөлөлт
 };
 
-/**
- * Vehicle type adjustment
- * Машины төрлөөр үнэ өөрчлөгдөнө
- */
-export const VEHICLE_TYPE_MULTIPLIER = {
-  SEDAN: 1.0,          // Base price
-  SUV: 1.15,           // 15% more expensive (larger parts)
-  TRUCK: 1.25,         // 25% more expensive
-  LUXURY: 1.5,         // 50% more expensive (premium parts)
+// ────────────────────────────────────────────────────────────────
+// VEHICLE TYPE MULTIPLIER
+// Машины зэрэглэлээр сэлбэгийн үнэ өөр
+// ────────────────────────────────────────────────────────────────
+export const VEHICLE_TYPE_MULTIPLIER: Record<string, number> = {
+  SEDAN:   1.0,   // Жижиг/дунд суудлын (Aqua, Fit, Vitz, Corolla гэх мэт)
+  SUV:     1.20,  // Том SUV (Land Cruiser, Prado, Hilux Surf гэх мэт)
+  TRUCK:   1.30,  // Пикап, ачааны
+  LUXURY:  1.60,  // Тансаг (Lexus, BMW, Mercedes гэх мэт)
+  COMPACT: 0.90,  // Маш жижиг (Kei car)
 };
+
+// ────────────────────────────────────────────────────────────────
+// VEHICLE AGE DISCOUNT
+// Хуучин машинд сэлбэг хямд, засварын стандарт бага
+// ────────────────────────────────────────────────────────────────
+export const VEHICLE_AGE_DISCOUNT: Array<{ maxAge: number; multiplier: number; label: string }> = [
+  { maxAge: 3,   multiplier: 1.00, label: 'Шинэ (3 хүртэл жил)' },
+  { maxAge: 7,   multiplier: 0.90, label: 'Харьцангуй шинэ (4-7 жил)' },
+  { maxAge: 12,  multiplier: 0.78, label: 'Дунд нас (8-12 жил)' },
+  { maxAge: 17,  multiplier: 0.65, label: 'Хуучин (13-17 жил)' },
+  { maxAge: 999, multiplier: 0.52, label: 'Маш хуучин (18+ жил)' },
+];
+
+/**
+ * Машины насаар discount multiplier авах
+ */
+export function getAgeMultiplier(vehicleYear?: number): number {
+  if (!vehicleYear) return 1.0;
+  const age = new Date().getFullYear() - vehicleYear;
+  const bracket = VEHICLE_AGE_DISCOUNT.find((b) => age <= b.maxAge);
+  return bracket?.multiplier ?? 0.52;
+}
