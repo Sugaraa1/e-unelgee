@@ -15,16 +15,41 @@ export const getVehicles = async (): Promise<Vehicle[]> => {
   return data.data;
 };
 
-export const createVehicle = async (payload: CreateVehiclePayload): Promise<Vehicle> => {
-  const { data } = await apiClient.post<ApiResponse<Vehicle>>('/vehicles', payload);
+export const createVehicle = async (
+  payload: CreateVehiclePayload,
+): Promise<Vehicle> => {
+  const { data } = await apiClient.post<ApiResponse<Vehicle>>(
+    '/vehicles',
+    payload,
+  );
   return data.data;
 };
 
-export const updateVehicle = async (id: string, payload: Partial<CreateVehiclePayload>): Promise<Vehicle> => {
-  const { data } = await apiClient.patch<ApiResponse<Vehicle>>(`/vehicles/${id}`, payload);
+export const updateVehicle = async (
+  id: string,
+  payload: Partial<CreateVehiclePayload>,
+): Promise<Vehicle> => {
+  const { data } = await apiClient.patch<ApiResponse<Vehicle>>(
+    `/vehicles/${id}`,
+    payload,
+  );
   return data.data;
 };
 
-export const deleteVehicle = async (id: string): Promise<void> => {
-  await apiClient.delete(`/vehicles/${id}`);
+// FIX: deleteVehicle — алдааны мессежийг backend-аас зөв авах
+export const deleteVehicle = async (
+  id: string,
+): Promise<{ message: string }> => {
+  const { data } = await apiClient.delete<
+    ApiResponse<{ message: string }>
+  >(`/vehicles/${id}`);
+
+  // Backend TransformInterceptor-оор { success: true, data: { message } } буцаана
+  if (!data?.success) {
+    throw new Error(
+      (data as any)?.message ?? 'Машин устгахад алдаа гарлаа',
+    );
+  }
+
+  return data.data;
 };

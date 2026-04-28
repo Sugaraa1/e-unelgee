@@ -52,11 +52,12 @@ export class VehiclesService {
     return this.vehicleRepository.save(vehicle);
   }
 
-  // ── Find All (өөрийн машинууд) ────────────────────────────────
+  // ── Find All (өөрийн машинууд) — зөвхөн устгаагүй машинуудыг буцаана ──
   async findAll(owner: User): Promise<Vehicle[]> {
     return this.vehicleRepository.find({
       where: { ownerId: owner.id },
       order: { createdAt: 'DESC' },
+      withDeleted: false, // FIX: softDelete-д орсон машинуудыг харуулахгүй
     });
   }
 
@@ -65,6 +66,7 @@ export class VehiclesService {
     const vehicle = await this.vehicleRepository.findOne({
       where: { id },
       relations: ['claims'],
+      withDeleted: false, // FIX: устгасан машиныг дахин олохоос сэргийлнэ
     });
 
     if (!vehicle) {
@@ -111,10 +113,42 @@ export class VehiclesService {
   }
 
   // ── Soft Delete ───────────────────────────────────────────────
+  // FIX: relations ашиглахгүйгээр шууд ownership шалгаж softDelete хийнэ.
+  // findOne + relations ашиглах нь TypeORM-д WHERE deletedAt IS NULL
+  // нөхцлийг алдуулж болзошгүй тул тусдаа query ашиглана.
   async remove(id: string, owner: User): Promise<{ message: string }> {
-    const vehicle = await this.findOne(id, owner);
-    await this.vehicleRepository.softDelete(vehicle.id);
-    return { message: `"${vehicle.make} ${vehicle.model}" машин амжилттай устгагдлаа` };
+    // Эхлээд машины үндсэн мэдээллийг авна (relations ашиглахгүй)
+    const vehicle = await this.vehicleRepository.findOne({
+      where: { id },
+      withDeleted: false, // устгагдсан машиныг олохгүй
+    });
+
+    if (!vehicle) {
+      throw new NotFoundException(`ID: ${id} машин олдсонгүй`);
+    }
+
+    // Ownership шалгах
+    if (vehicle.ownerId !== owner.id) {
+      throw new ForbiddenException('Энэ машинд хандах эрх байхгүй байна');
+    }
+
+    // FIX: softDelete — id болон ownerId хоёуланг нь нөхцөлд оруулна
+    // Ингэснээр өөр хэрэглэгчийн машиныг санамсаргүйгаар устгахаас хамгаална
+    const result = await this.vehicleRepository.softDelete({
+      id: vehicle.id,
+      ownerId: owner.id,
+    });
+
+    // softDelete хийгдсэн мөрийн тоог шалгана
+    if (!result.affected || result.affected === 0) {
+      throw new NotFoundException(
+        `ID: ${id} машин устгахад алдаа гарлаа. Дахин оролдоно уу.`,
+      );
+    }
+
+    return {
+      message: `"${vehicle.make} ${vehicle.model}" машин амжилттай устгагдлаа`,
+    };
   }
 
   // ── Private: Ownership шалгах ─────────────────────────────────
