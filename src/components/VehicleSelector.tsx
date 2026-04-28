@@ -29,9 +29,7 @@ export interface VehicleColor {
 export interface VehicleSelection {
   brand: string;
   model: string;
-  /** Үйлдвэрлэсэн он */
   manufactureYear: number;
-  /** Монголд орж ирсэн он (заавал биш) */
   importYear?: number;
   color: string;
   colorHex: string;
@@ -143,14 +141,14 @@ const PickerModal: React.FC<PickerModalProps> = ({
       >
         <View style={pm.itemLeft}>
           <Text style={[pm.itemLabel, isSelected ? pm.selectedLabel : undefined]}>{item.label}</Text>
-          {item.sub && <Text style={pm.itemSub}>{item.sub}</Text>}
+          {item.sub ? <Text style={pm.itemSub}>{item.sub}</Text> : null}
         </View>
         <View style={pm.itemRight}>
-          {item.badge && (
+          {item.badge ? (
             <View style={pm.popularBadge}>
               <Text style={pm.popularBadgeText}>{item.badge}</Text>
             </View>
-          )}
+          ) : null}
           {isSelected && <Ionicons name="checkmark-circle" size={18} color={COLORS.secondary} />}
         </View>
       </TouchableOpacity>
@@ -216,7 +214,7 @@ const PickerModal: React.FC<PickerModalProps> = ({
 };
 
 // ════════════════════════════════════════════════════════════════
-// STEP INDICATOR — Брэнд / Загвар / Он / Өнгө (4 алхам)
+// STEP INDICATOR
 // ════════════════════════════════════════════════════════════════
 const STEPS = ['Брэнд', 'Загвар', 'Он', 'Өнгө'];
 
@@ -233,7 +231,7 @@ const StepIndicator: React.FC<{ currentStep: number; completedSteps: number }> =
             <View style={[si.circle, done ? si.circleDone : undefined, active ? si.circleActive : undefined]}>
               {done
                 ? <Ionicons name="checkmark" size={12} color="#fff" />
-                : <Text style={[si.circleNum, active ? si.circleNumActive : undefined]}>{i + 1}</Text>}
+                : <Text style={[si.circleNum, active ? si.circleNumActive : undefined]}>{String(i + 1)}</Text>}
             </View>
             <Text style={[si.label, (done || active) ? si.labelActive : undefined]}>{label}</Text>
           </View>
@@ -247,7 +245,7 @@ const StepIndicator: React.FC<{ currentStep: number; completedSteps: number }> =
 );
 
 // ════════════════════════════════════════════════════════════════
-// FIELD ROW — нийтлэг товч мөр
+// FIELD ROW
 // ════════════════════════════════════════════════════════════════
 interface FieldRowProps {
   step: number;
@@ -258,9 +256,7 @@ interface FieldRowProps {
   onPress: () => void;
   colorHex?: string;
   icon: string;
-  /** Дэд тайлбар — жишэ: "Үйлдвэрлэсэн он" */
   sublabel?: string;
-  /** Заавал биш гэдгийг харуулах */
   optional?: boolean;
 }
 
@@ -285,7 +281,7 @@ const FieldRow: React.FC<FieldRowProps> = ({
         <View style={[fr.stepBubble, !!value ? fr.stepBubbleDone : undefined]}>
           {value
             ? <Ionicons name="checkmark" size={11} color="#fff" />
-            : <Text style={[fr.stepNum, disabled ? fr.stepNumDisabled : undefined]}>{step}</Text>}
+            : <Text style={[fr.stepNum, disabled ? fr.stepNumDisabled : undefined]}>{String(step)}</Text>}
         </View>
 
         {colorHex
@@ -309,9 +305,9 @@ const FieldRow: React.FC<FieldRowProps> = ({
           <Text style={[fr.fieldValue, !value ? fr.fieldPlaceholder : undefined]} numberOfLines={1}>
             {value ?? placeholder}
           </Text>
-          {sublabel && !value && (
+          {sublabel && !value ? (
             <Text style={fr.fieldSublabel}>{sublabel}</Text>
-          )}
+          ) : null}
         </View>
 
         <Ionicons name="chevron-forward" size={16} color={disabled ? COLORS.border : COLORS.textMuted} />
@@ -321,7 +317,7 @@ const FieldRow: React.FC<FieldRowProps> = ({
 };
 
 // ════════════════════════════════════════════════════════════════
-// ОН ЖИЛИЙН ХЭСЭГ — 2 талбар нэгтгэсэн card
+// YEAR SECTION — FIX: Text rendering алдаа засагдсан
 // ════════════════════════════════════════════════════════════════
 interface YearSectionProps {
   manufactureYear: number;
@@ -336,24 +332,30 @@ const YearSection: React.FC<YearSectionProps> = ({
   manufactureYear, importYear, disabled,
   onOpenManufacture, onOpenImport, onClearImport,
 }) => {
-  const ageDiff =
+  // FIX: type-ийг тодорхой болгосон — number | null
+  const ageDiff: number | null =
     manufactureYear && importYear && importYear > manufactureYear
       ? importYear - manufactureYear
       : null;
 
   return (
     <View style={ys.wrapper}>
-      {/* Гарчиг мөр */}
+      {/* Header мөр */}
       <View style={ys.header}>
         <View style={[ys.stepBubble, !!manufactureYear ? ys.stepBubbleDone : undefined]}>
           {manufactureYear
             ? <Ionicons name="checkmark" size={11} color="#fff" />
-            : <Text style={ys.stepNum}>3</Text>}
+            : <Text style={ys.stepNum}>{'3'}</Text>}
         </View>
-        <Ionicons name="calendar-outline" size={18} color={manufactureYear ? COLORS.primary : COLORS.textMuted} style={{ marginHorizontal: 8 }} />
+        <Ionicons
+          name="calendar-outline"
+          size={18}
+          color={manufactureYear ? COLORS.primary : COLORS.textMuted}
+          style={{ marginHorizontal: 8 }}
+        />
         <View style={{ flex: 1 }}>
-          <Text style={ys.sectionLabel}>ОН ЖИЛ</Text>
-          <Text style={ys.sectionSub}>Монгол дахь үнэлгээг нарийвчлуулна</Text>
+          <Text style={ys.sectionLabel}>{'ОН ЖИЛ'}</Text>
+          <Text style={ys.sectionSub}>{'Монгол дахь үнэлгээг нарийвчлуулна'}</Text>
         </View>
       </View>
 
@@ -374,7 +376,7 @@ const YearSection: React.FC<YearSectionProps> = ({
             <Ionicons name="construct-outline" size={15} color={manufactureYear ? COLORS.primary : COLORS.textMuted} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={ys.yearTypeLabel}>Үйлдвэрлэсэн он</Text>
+            <Text style={ys.yearTypeLabel}>{'Үйлдвэрлэсэн он'}</Text>
             <Text style={[ys.yearValue, !manufactureYear ? ys.yearPlaceholder : undefined]}>
               {manufactureYear ? `${manufactureYear} он` : 'Сонгоно уу'}
             </Text>
@@ -400,12 +402,16 @@ const YearSection: React.FC<YearSectionProps> = ({
           </View>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Text style={ys.yearTypeLabel}>Орж ирсэн он</Text>
+              <Text style={ys.yearTypeLabel}>{'Орж ирсэн он'}</Text>
               <View style={ys.optTag}>
-                <Text style={ys.optTagText}>Заавал биш</Text>
+                <Text style={ys.optTagText}></Text>
               </View>
             </View>
-            <Text style={[ys.yearValue, !importYear ? ys.yearPlaceholder : undefined, importYear ? { color: COLORS.secondary } : undefined]}>
+            <Text style={[
+              ys.yearValue,
+              !importYear ? ys.yearPlaceholder : undefined,
+              importYear ? { color: COLORS.secondary } : undefined,
+            ]}>
               {importYear ? `${importYear} он` : 'Сонгоно уу'}
             </Text>
           </View>
@@ -423,28 +429,29 @@ const YearSection: React.FC<YearSectionProps> = ({
         </TouchableOpacity>
       </View>
 
-      {/* Хоорондын зай тооцоолол */}
+      {/* FIX: ageDiff харуулах — template literal ашиглан Text-ийн дотор оруулна */}
       {ageDiff !== null && (
         <View style={ys.diffBox}>
           <Ionicons name="information-circle-outline" size={13} color={COLORS.primary} />
           <Text style={ys.diffText}>
-            Үйлдвэрлэгдсэнээс хойш{' '}
-            <Text style={{ fontWeight: '700', color: COLORS.primary }}>{ageDiff} жил</Text>
-            -ийн дараа Монголд орж ирсэн
-            {ageDiff >= 5 ? ' — насжилтын үнэлгээнд анхааралтай байна уу.' : '.'}
+            {`Үйлдвэрлэгдсэнээс хойш `}
+            <Text style={{ fontWeight: '700', color: COLORS.primary }}>{`${ageDiff} жил`}</Text>
+            {ageDiff >= 5
+              ? ' -ийн дараа Монголд орж ирсэн — насжилтын үнэлгээнд анхааралтай байна уу.'
+              : ' -ийн дараа Монголд орж ирсэн.'}
           </Text>
         </View>
       )}
 
-      {/* Зөвлөмж — зөвхөн үйлдвэрлэсэн он сонгосон үед */}
-      {manufactureYear && !importYear && (
+      {/* Зөвлөмж */}
+      {manufactureYear && !importYear ? (
         <View style={ys.tipBox}>
           <Ionicons name="bulb-outline" size={13} color={COLORS.warning} />
           <Text style={ys.tipText}>
-            Орж ирсэн оныг оруулбал Монгол дахь насжилт, элэгдлийн үнэлгээ илүү нарийвчлалтай гарна.
+            {'Орж ирсэн оныг оруулбал Монгол дахь насжилт, элэгдлийн үнэлгээ илүү нарийвчлалтай гарна.'}
           </Text>
         </View>
-      )}
+      ) : null}
     </View>
   );
 };
@@ -521,7 +528,7 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({
     if (!catalog || !Array.isArray(catalog.brands)) return [];
     return catalog.brands.map((b) => ({
       id: b.name, label: b.name, sub: b.country,
-      badge: b.popularInMongolia ? '🇲🇳 Түгээмэл' : undefined,
+      badge: b.popularInMongolia ? '' : undefined,
     }));
   }, [catalog]);
 
@@ -529,28 +536,24 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({
     if (!catalog || !brand) return [];
     const raw = Array.isArray(catalog.modelsByBrand?.[brand])
       ? catalog.modelsByBrand[brand] : [];
-    // FIX: Set ашиглан давхардлыг арилгана (Honda-д 'Passport' x2 байсан)
     const seen = new Set<string>();
     return raw
       .filter((m) => { if (seen.has(m)) return false; seen.add(m); return true; })
       .map((m, i) => ({ id: `model-${i}-${m}`, label: m }));
   }, [catalog, brand]);
 
-  /** Үйлдвэрлэсэн он — бүх жил */
   const manufactureYearItems = useMemo((): PickerItem[] => {
     if (!catalog || !Array.isArray(catalog.years)) return [];
     return catalog.years.map((y) => ({ id: String(y), label: `${y} он` }));
   }, [catalog]);
 
-  /** Орж ирсэн он — үйлдвэрлэсэн оноос хойш, одоо хүртэл
-   *  id-г "import-YYYY" болгосноор manufactureYearItems-тай key давхцахаас сэргийлнэ */
   const importYearItems = useMemo((): PickerItem[] => {
     if (!catalog || !Array.isArray(catalog.years) || !manufactureYear) return [];
     const currentYear = new Date().getFullYear();
     return catalog.years
       .filter((y) => y >= manufactureYear && y <= currentYear)
       .map((y) => ({
-        id: `import-${y}`,          // ← давхцахаас сэргийлэх prefix
+        id: `import-${y}`,
         label: `${y} он`,
         sub: y === manufactureYear
           ? 'Үйлдвэрлэсэн жилдээ орж ирсэн'
@@ -573,23 +576,19 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({
   }, []);
 
   const handleModelSelect = useCallback((item: PickerItem) => {
-    // id нь 'model-{i}-{modelName}' format — label ашиглана
     setModel(item.label);
     setManufactureYear(0); setImportYear(0);
     setColor(''); setColorHex('');
   }, []);
 
   const handleManufactureYearSelect = useCallback((item: PickerItem) => {
-    // id нь plain "YYYY" format
     const y = Number(item.id);
     setManufactureYear(y);
-    // Орж ирсэн он үйлдвэрлэсэн оноос өмнө байвал цэвэрлэнэ
     if (importYear && importYear < y) setImportYear(0);
     setColor(''); setColorHex('');
   }, [importYear]);
 
   const handleImportYearSelect = useCallback((item: PickerItem) => {
-    // id нь "import-YYYY" format — prefix хасаж тоо авна
     const y = Number(item.id.replace('import-', ''));
     setImportYear(y);
   }, []);
@@ -608,13 +607,11 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({
     }
   }, [brand, model, manufactureYear, importYear, onChange]);
 
-  // Орж ирсэн оны "x" товч
   const handleClearImportYear = useCallback(() => {
     setImportYear(0);
   }, []);
 
   // ── Алхам тооцоолол ──────────────────────────────────────────
-  // Он алхам: manufactureYear сонгосон бол дууссан гэж үзнэ (importYear заавал биш)
   const yearStepDone  = !!manufactureYear;
   const completedSteps =
     (brand ? 1 : 0) +
@@ -630,7 +627,7 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({
     return (
       <View style={vs.loadingBox}>
         <ActivityIndicator size="small" color={COLORS.primary} />
-        <Text style={vs.loadingText}>Каталог ачааллаж байна...</Text>
+        <Text style={vs.loadingText}>{'Каталог ачааллаж байна...'}</Text>
       </View>
     );
   }
@@ -639,13 +636,13 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({
     return (
       <View style={vs.errorBox}>
         <Ionicons name="cloud-offline-outline" size={32} color={COLORS.textLight} />
-        <Text style={vs.errorText}>Каталог ачааллахад алдаа гарлаа</Text>
+        <Text style={vs.errorText}>{'Каталог ачааллахад алдаа гарлаа'}</Text>
         <TouchableOpacity
           style={vs.retryBtn}
           onPress={() => { setLoading(true); fetchAndCacheCatalog(); }}
         >
           <Ionicons name="refresh" size={15} color="#fff" />
-          <Text style={vs.retryBtnText}>Дахин оролдох</Text>
+          <Text style={vs.retryBtnText}>{'Дахин оролдох'}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -656,7 +653,6 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({
       <StepIndicator currentStep={currentStep} completedSteps={completedSteps} />
 
       <View style={vs.fields}>
-        {/* Брэнд */}
         <FieldRow
           step={1} label="БРЭНД" value={brand}
           placeholder="Toyota, Hyundai, BMW..." icon="business-outline"
@@ -664,7 +660,6 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({
           disabled={disabled}
         />
 
-        {/* Загвар */}
         <FieldRow
           step={2} label="ЗАГВАР" value={model}
           placeholder={brand ? 'Загвар сонгоно уу' : 'Эхлээд брэнд сонгоно уу'}
@@ -673,7 +668,6 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({
           disabled={disabled || !brand}
         />
 
-        {/* Он жилийн хэсэг — 2 талбартай card */}
         <YearSection
           manufactureYear={manufactureYear}
           importYear={importYear || undefined}
@@ -683,7 +677,6 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({
           onClearImport={handleClearImportYear}
         />
 
-        {/* Өнгө */}
         <FieldRow
           step={4} label="ӨНГӨ" value={color}
           colorHex={colorHex || undefined}
@@ -699,11 +692,11 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({
         <View style={vs.summaryCard}>
           <View style={[vs.colorDot, { backgroundColor: colorHex }]} />
           <View style={{ flex: 1 }}>
-            <Text style={vs.summaryMain}>{brand} {model}</Text>
+            <Text style={vs.summaryMain}>{`${brand} ${model}`}</Text>
             <Text style={vs.summarySub}>
-              {manufactureYear} он
-              {importYear ? ` → ${importYear} он (орж ирсэн)` : ''}
-              {' • '}{color}
+              {importYear
+                ? `${manufactureYear} он → ${importYear} он (орж ирсэн) • ${color}`
+                : `${manufactureYear} он • ${color}`}
             </Text>
           </View>
           <TouchableOpacity
@@ -723,7 +716,7 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({
         <View style={vs.hint}>
           <Ionicons name="information-circle-outline" size={13} color={COLORS.primary} />
           <Text style={vs.hintText}>
-            Машины мэдээллийг нарийвчлан оруулснаар AI шинжилгээний нарийвчлал нэмэгдэнэ.
+            {'Машины мэдээллийг нарийвчлан оруулснаар AI шинжилгээний нарийвчлал нэмэгдэнэ.'}
           </Text>
         </View>
       )}
@@ -846,7 +839,6 @@ const fr = StyleSheet.create({
   optionalText:     { fontSize: 9, color: '#9CA3AF', fontWeight: '600' },
 });
 
-// ── YearSection styles ────────────────────────────────────────
 const ys = StyleSheet.create({
   wrapper: {
     backgroundColor: '#fff', borderRadius: RADIUS.md,
@@ -857,12 +849,12 @@ const ys = StyleSheet.create({
       android: { elevation: 1 },
     }),
   },
-  header:       { flexDirection: 'row', alignItems: 'center' },
-  stepBubble:   { width: 22, height: 22, borderRadius: 11, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
+  header:         { flexDirection: 'row', alignItems: 'center' },
+  stepBubble:     { width: 22, height: 22, borderRadius: 11, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
   stepBubbleDone: { backgroundColor: '#0E9F6E' },
-  stepNum:      { fontSize: 11, fontWeight: '800', color: '#6B7280' },
-  sectionLabel: { fontSize: 10, fontWeight: '700', color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.3 },
-  sectionSub:   { fontSize: 10, color: '#9CA3AF', marginTop: 1 },
+  stepNum:        { fontSize: 11, fontWeight: '800', color: '#6B7280' },
+  sectionLabel:   { fontSize: 10, fontWeight: '700', color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.3 },
+  sectionSub:     { fontSize: 10, color: '#9CA3AF', marginTop: 1 },
 
   row:          { flexDirection: 'row', gap: 8 },
 
@@ -871,39 +863,39 @@ const ys = StyleSheet.create({
     borderRadius: RADIUS.sm, borderWidth: 1.5, borderColor: '#E5E7EB',
     backgroundColor: '#F9FAFB', padding: 10,
   },
-  yearBtnFilled:       { borderColor: '#93C5FD', backgroundColor: '#EFF6FF' },
-  yearBtnFilledImport: { borderColor: '#6EE7B7', backgroundColor: '#F0FDF4' },
-  yearBtnDisabled:     { opacity: 0.5 },
+  yearBtnFilled:        { borderColor: '#93C5FD', backgroundColor: '#EFF6FF' },
+  yearBtnFilledImport:  { borderColor: '#6EE7B7', backgroundColor: '#F0FDF4' },
+  yearBtnDisabled:      { opacity: 0.5 },
 
   yearIconWrap: {
     width: 30, height: 30, borderRadius: RADIUS.sm,
     justifyContent: 'center', alignItems: 'center', flexShrink: 0,
   },
-  yearTypeLabel: { fontSize: 10, fontWeight: '700', color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.2 },
-  yearValue:     { fontSize: FONT_SIZE.sm, fontWeight: '600', color: '#111928', marginTop: 2 },
+  yearTypeLabel:   { fontSize: 10, fontWeight: '700', color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.2 },
+  yearValue:       { fontSize: FONT_SIZE.sm, fontWeight: '600', color: '#111928', marginTop: 2 },
   yearPlaceholder: { color: '#9CA3AF', fontWeight: '400' },
 
   checkDot: {
     width: 18, height: 18, borderRadius: 9, backgroundColor: '#0E9F6E',
     justifyContent: 'center', alignItems: 'center',
   },
-  clearBtn:     { padding: 2 },
-  optTag:       { backgroundColor: '#FFF8EE', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 },
-  optTagText:   { fontSize: 8, color: '#FF8A00', fontWeight: '700' },
+  clearBtn: { padding: 2 },
+  optTag:   { backgroundColor: '#FFF8EE', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 },
+  optTagText: { fontSize: 8, color: '#FF8A00', fontWeight: '700' },
 
   diffBox: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 6,
     backgroundColor: '#EFF6FF', borderRadius: RADIUS.sm,
     padding: 8, borderWidth: 0.5, borderColor: '#93C5FD',
   },
-  diffText:     { fontSize: FONT_SIZE.xs, color: '#1D4ED8', flex: 1, lineHeight: 17 },
+  diffText: { fontSize: FONT_SIZE.xs, color: '#1D4ED8', flex: 1, lineHeight: 17 },
 
   tipBox: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 6,
     backgroundColor: '#FFF8EE', borderRadius: RADIUS.sm,
     padding: 8, borderWidth: 0.5, borderColor: '#FCD34D',
   },
-  tipText:      { fontSize: FONT_SIZE.xs, color: '#92400E', flex: 1, lineHeight: 17 },
+  tipText: { fontSize: FONT_SIZE.xs, color: '#92400E', flex: 1, lineHeight: 17 },
 });
 
 const vs = StyleSheet.create({
@@ -921,10 +913,10 @@ const vs = StyleSheet.create({
     borderRadius: RADIUS.md, padding: SPACING.md,
     borderWidth: 1, borderColor: '#6EE7B7', gap: SPACING.sm,
   },
-  colorDot:     { width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, borderColor: '#E5E7EB' },
-  summaryMain:  { fontSize: FONT_SIZE.md, fontWeight: '700', color: '#111928' },
-  summarySub:   { fontSize: FONT_SIZE.xs, color: '#6B7280', marginTop: 2 },
-  resetBtn:     { padding: 4 },
+  colorDot:    { width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, borderColor: '#E5E7EB' },
+  summaryMain: { fontSize: FONT_SIZE.md, fontWeight: '700', color: '#111928' },
+  summarySub:  { fontSize: FONT_SIZE.xs, color: '#6B7280', marginTop: 2 },
+  resetBtn:    { padding: 4 },
 
   hint: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 6,
